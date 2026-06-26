@@ -1,4 +1,5 @@
 const storageKey = 'vyapar-os-v1';
+const authKey = 'vyapar-os-auth-v1';
 
 const defaultState = {
   merchants: [
@@ -54,6 +55,18 @@ function loadState() {
 
 function saveState(nextState) {
   localStorage.setItem(storageKey, JSON.stringify(nextState));
+}
+
+function loadAuth() {
+  try {
+    return JSON.parse(localStorage.getItem(authKey) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveAuth(value) {
+  localStorage.setItem(authKey, JSON.stringify(value));
 }
 
 function escapeHtml(value) {
@@ -157,8 +170,31 @@ function appTemplate(state) {
   const merchant = state.merchants.find((item) => item.id === state.selectedMerchantId) || state.merchants[0];
   const summary = merchant.weeklySummary;
   const role = merchant.role || 'Owner';
+  const auth = loadAuth();
+  const locked = !auth;
 
   return `
+    ${locked ? `
+      <div class="lockscreen">
+        <div class="lockcard">
+          <div class="brand lockbrand">
+            <div class="mark">V</div>
+            <div>
+              <h1>Vyapar OS</h1>
+              <p>Local workspace lock</p>
+            </div>
+          </div>
+          <p class="lede">Set a local passcode so this browser session behaves like a private merchant workspace.</p>
+          <label>
+            Passcode
+            <input type="password" data-passcode placeholder="Enter any local passcode" />
+          </label>
+          <div class="actions" style="justify-content:flex-start">
+            <button data-unlock-workspace>Unlock workspace</button>
+          </div>
+        </div>
+      </div>
+    ` : ''}
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
@@ -280,6 +316,7 @@ function appTemplate(state) {
             </div>
             <div class="actions" style="justify-content:flex-start">
               <button data-add-merchant type="button">Add merchant</button>
+              <button data-export-backup type="button">Export backup</button>
             </div>
           </article>
 
@@ -500,6 +537,13 @@ function bindEvents() {
     });
   });
 
+  document.querySelector('[data-unlock-workspace]')?.addEventListener('click', () => {
+    const passcode = document.querySelector('[data-passcode]').value.trim();
+    if (!passcode) return;
+    saveAuth({ unlocked: true, passcodeHint: `${passcode.length} chars` });
+    render();
+  });
+
   document.querySelector('[data-save-profile]')?.addEventListener('click', () => {
     const businessName = document.querySelector('[data-business-name]').value.trim();
     const ownerName = document.querySelector('[data-owner-name]').value.trim();
@@ -647,6 +691,27 @@ function bindEvents() {
         { from: 'Vyapar OS', message: `You recovered ${money(merchant.weeklySummary.recovered)} this week.`, type: 'system' },
       ],
       logs: [...merchant.logs, { ts: new Date().toISOString(), type: 'inbox-test', message: 'Test summary message sent to inbox simulator.' }],
+    }));
+  });
+
+  document.querySelector('[data-export-backup]')?.addEventListener('click', () => {
+    const state = loadState();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      app: 'Vyapar OS',
+      version: 1,
+      state,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vyapar-os-backup-${Date.now()}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    updateMerchant((merchant) => ({
+      ...merchant,
+      logs: [...merchant.logs, { ts: new Date().toISOString(), type: 'backup-exported', message: 'Workspace backup exported as JSON.' }],
     }));
   });
 }
