@@ -82,6 +82,10 @@ function getSessionToken() {
   }
 }
 
+function clearAuth() {
+  localStorage.removeItem(authKey);
+}
+
 async function hydrateStateFromServer() {
   try {
     const response = await fetch('/api/state');
@@ -212,7 +216,7 @@ function appTemplate(state) {
   const summary = merchant.weeklySummary;
   const role = merchant.role || 'Owner';
   const auth = loadAuth();
-  const locked = !auth;
+  const locked = !auth?.session;
 
   return `
     ${locked ? `
@@ -226,6 +230,7 @@ function appTemplate(state) {
             </div>
           </div>
           <p class="lede">Set a local passcode so this browser session behaves like a private merchant workspace.</p>
+          <p class="helper">Unlocking creates a local session token for the selected merchant only.</p>
           <label>
             Passcode
             <input type="password" data-passcode placeholder="Enter any local passcode" />
@@ -293,6 +298,9 @@ function appTemplate(state) {
             <li>Approval before disputes</li>
             <li>Merchant data stays isolated</li>
           </ul>
+          <div class="actions" style="justify-content:flex-start">
+            <button data-lock-workspace type="button">Lock workspace</button>
+          </div>
         </section>
       </aside>
 
@@ -594,6 +602,11 @@ function bindEvents() {
     createSession(merchantId).then(() => render());
   });
 
+  document.querySelector('[data-lock-workspace]')?.addEventListener('click', () => {
+    clearAuth();
+    render();
+  });
+
   document.querySelector('[data-save-profile]')?.addEventListener('click', () => {
     const businessName = document.querySelector('[data-business-name]').value.trim();
     const ownerName = document.querySelector('[data-owner-name]').value.trim();
@@ -811,6 +824,7 @@ function bindEvents() {
         language: merchant.language,
         text: sampleText,
         role: merchant.role,
+        sessionToken: getSessionToken(),
       }),
     });
     const result = await response.json();
