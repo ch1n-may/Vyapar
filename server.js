@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { extname, join, dirname } from 'node:path';
 import { promisify } from 'node:util';
+import { createHash, randomUUID } from 'node:crypto';
 
 const port = process.env.PORT || 3000;
 const root = process.cwd();
@@ -33,6 +34,10 @@ async function writeJsonFile(path, value) {
   await writeFile(path, JSON.stringify(value, null, 2), 'utf8');
 }
 
+function hashPasscode(passcode) {
+  return createHash('sha256').update(passcode).digest('hex');
+}
+
 async function extractPdfTextFromBase64(base64) {
   const script = String.raw`
 import base64, sys, json
@@ -60,6 +65,11 @@ async function getState() {
       selectedMerchantId: null,
     }
   );
+}
+
+async function getMerchantState(merchantId) {
+  const state = await getState();
+  return state.merchants.find((merchant) => merchant.id === merchantId) || null;
 }
 
 const server = createServer(async (req, res) => {
@@ -93,6 +103,226 @@ const server = createServer(async (req, res) => {
       } catch {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Invalid state payload' }));
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/session' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1_000_000) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = JSON.parse(body || '{}');
+        const state = await getState();
+        const merchant = state.merchants.find((item) => item.id === parsed?.merchantId);
+        if (!merchant) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Merchant not found' }));
+          return;
+        }
+        const token = randomUUID();
+        const session = {
+          token,
+          merchantId: merchant.id,
+          role: merchant.role || 'Owner',
+          language: merchant.language || 'Hindi',
+          createdAt: new Date().toISOString(),
+        };
+        await writeJsonFile(join(root, 'data', `session-${token}.json`), session);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, session }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid session payload' }));
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/merchant' && req.method === 'GET') {
+    const merchantId = url.searchParams.get('id');
+    const merchant = await getMerchantState(merchantId);
+    if (!merchant) {
+      res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: 'Merchant not found' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, merchant }));
+    return;
+  }
+
+  if (url.pathname === '/api/merchant' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2_000_000) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = JSON.parse(body || '{}');
+        const state = await getState();
+        const merchant = {
+          id: `msme-${String(state.merchants.length + 1).padStart(3, '0')}`,
+          businessName: parsed.businessName || `Merchant ${state.merchants.length + 1}`,
+          ownerName: parsed.ownerName || 'New Founder',
+          language: parsed.language || 'Hindi',
+          fallbackLanguage: parsed.fallbackLanguage || 'English',
+          role: parsed.role || 'Owner',
+          channels: Array.isArray(parsed.channels) ? parsed.channels : ['WhatsApp'],
+          status: 'Draft',
+          approvals: true,
+          notes: 'Created via API',
+          logs: [{ ts: new Date().toISOString(), type: 'created', message: 'Merchant workspace created via API.' }],
+          disputes: [],
+          alerts: [],
+          tasks: [],
+          inbox: [],
+          packProof: [],
+          weeklySummary: { recovered: 0, netProfit: 0, deductionLeak: 0, topSku: 'No data yet' },
+        };
+        const next = { ...state, merchants: [...state.merchants, merchant], selectedMerchantId: merchant.id };
+        await writeJsonFile(stateFile, next);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, merchant, state: next }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid merchant payload' }));
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/disputes' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2_000_000) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = JSON.parse(body || '{}');
+        const state = await getState();
+        const merchant = state.merchants.find((item) => item.id === parsed.merchantId);
+        if (!merchant) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Merchant not found' }));
+          return;
+        }
+        const dispute = {
+          id: `D-${String(Math.floor(1000 + Math.random() * 9000))}`,
+          platform: parsed.platform || 'Marketplace',
+          amount: Number(parsed.amount || 0),
+          status: 'Draft ready',
+          daysOpen: 0,
+          note: parsed.note || '',
+        };
+        merchant.disputes = [...(merchant.disputes || []), dispute];
+        merchant.logs = [
+          ...(merchant.logs || []),
+          { ts: new Date().toISOString(), type: 'dispute-created', message: `Dispute ${dispute.id} created via API.` },
+        ];
+        state.selectedMerchantId = merchant.id;
+        await writeJsonFile(stateFile, state);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, dispute, merchant }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid dispute payload' }));
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/disputes/approve' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2_000_000) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = JSON.parse(body || '{}');
+        const state = await getState();
+        const merchant = state.merchants.find((item) => item.id === parsed.merchantId);
+        if (!merchant) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Merchant not found' }));
+          return;
+        }
+        merchant.logs = [
+          ...(merchant.logs || []),
+          { ts: new Date().toISOString(), type: 'dispute-approved', message: `Dispute ${parsed.disputeId || 'unknown'} approved via API.` },
+        ];
+        await writeJsonFile(stateFile, state);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid approval payload' }));
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/message' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1_000_000) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = JSON.parse(body || '{}');
+        const state = await getState();
+        const merchant = state.merchants.find((item) => item.id === parsed?.merchantId);
+        const text = String(parsed?.text || '').toLowerCase();
+        const language = parsed?.language || merchant?.language || 'Hindi';
+        const role = parsed?.role || merchant?.role || 'Owner';
+        let replyText = `Received message for ${parsed?.merchantId || 'unknown merchant'}.`;
+        if (text.includes('kamaya') || text.includes('earn') || text.includes('profit')) {
+          replyText = language === 'Hindi'
+            ? `Aapke liye weekly recovery summary ready hai.`
+            : `Your weekly recovery summary is ready.`;
+        } else if (text.includes('dispute')) {
+          replyText = language === 'Hindi'
+            ? `Dispute draft tayyar hai. ${role === 'Accountant' ? 'Accountant review required.' : 'Approval milte hi next step.'}`
+            : `The dispute draft is ready. ${role === 'Accountant' ? 'Accountant review required.' : 'Once approved, I will move to the next step.'}`;
+        } else if (text.includes('stock')) {
+          replyText = language === 'Hindi'
+            ? 'Stock alert mila. Main low-stock items list kar raha hoon.'
+            : 'Stock alert received. I am listing the low-stock items.';
+        } else if (text.includes('backup')) {
+          replyText = language === 'Hindi'
+            ? 'Backup export aur restore dono ready hain.'
+            : 'Backup export and restore are both ready.';
+        }
+        const reply = {
+          ok: true,
+          received: parsed,
+          replyText,
+        };
+        if (merchant) {
+          merchant.inbox = [
+            ...(merchant.inbox || []),
+            { from: 'Merchant', message: parsed.text || '', type: 'seller' },
+            { from: 'Vyapar OS', message: replyText, type: 'system' },
+          ];
+          merchant.logs = [
+            ...(merchant.logs || []),
+            { ts: new Date().toISOString(), type: 'message-routed', message: `Message routed in ${language} for ${role}.` },
+          ];
+          await writeJsonFile(stateFile, state);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(reply));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid message payload' }));
       }
     });
     return;

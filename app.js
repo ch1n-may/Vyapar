@@ -74,6 +74,14 @@ function saveAuth(value) {
   localStorage.setItem(authKey, JSON.stringify(value));
 }
 
+function getSessionToken() {
+  try {
+    return loadAuth()?.session?.token || null;
+  } catch {
+    return null;
+  }
+}
+
 async function hydrateStateFromServer() {
   try {
     const response = await fetch('/api/state');
@@ -87,6 +95,19 @@ async function hydrateStateFromServer() {
   } catch {
     // keep local-only mode
   }
+}
+
+async function createSession(merchantId) {
+  const response = await fetch('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ merchantId }),
+  });
+  const result = await response.json();
+  if (result?.ok && result.session) {
+    saveAuth({ session: result.session });
+  }
+  return result;
 }
 
 function escapeHtml(value) {
@@ -404,6 +425,7 @@ function appTemplate(state) {
             </div>
             <div class="actions">
               <button data-add-dispute>Add sample dispute</button>
+              <button data-create-dispute type="button">Create API dispute</button>
             </div>
           </article>
 
@@ -567,8 +589,9 @@ function bindEvents() {
   document.querySelector('[data-unlock-workspace]')?.addEventListener('click', () => {
     const passcode = document.querySelector('[data-passcode]').value.trim();
     if (!passcode) return;
-    saveAuth({ unlocked: true, passcodeHint: `${passcode.length} chars` });
-    render();
+    const state = loadState();
+    const merchantId = state.selectedMerchantId;
+    createSession(merchantId).then(() => render());
   });
 
   document.querySelector('[data-save-profile]')?.addEventListener('click', () => {
@@ -687,11 +710,50 @@ function bindEvents() {
     }));
   });
 
+  document.querySelector('[data-create-dispute]')?.addEventListener('click', async () => {
+    const state = loadState();
+    const merchant = state.merchants.find((item) => item.id === state.selectedMerchantId);
+    const response = await fetch('/api/disputes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantId: merchant.id,
+        platform: 'Amazon',
+        amount: merchant.weeklySummary.recovered || 1240,
+        note: 'Created from UI approval flow',
+        sessionToken: getSessionToken(),
+      }),
+    });
+    const result = await response.json();
+    if (result?.ok) {
+      const currentState = loadState();
+      const currentMerchant = currentState.merchants.find((item) => item.id === currentState.selectedMerchantId);
+      updateMerchant((current) => ({
+        ...current,
+        disputes: [...current.disputes, result.dispute],
+        logs: [...current.logs, { ts: new Date().toISOString(), type: 'dispute-created', message: 'Dispute created via API.' }],
+      }));
+    }
+  });
+
   document.querySelector('[data-approve-dispute]')?.addEventListener('click', () => {
-    updateMerchant((merchant) => ({
-      ...merchant,
-      logs: [...merchant.logs, { ts: new Date().toISOString(), type: 'dispute-approved', message: 'Merchant approved the current dispute draft.' }],
-    }));
+    const state = loadState();
+    const merchant = state.merchants.find((item) => item.id === state.selectedMerchantId);
+    const disputeId = merchant.disputes[0]?.id;
+    fetch('/api/disputes/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantId: merchant.id,
+        disputeId,
+        sessionToken: getSessionToken(),
+      }),
+    }).finally(() => {
+      updateMerchant((merchantState) => ({
+        ...merchantState,
+        logs: [...merchantState.logs, { ts: new Date().toISOString(), type: 'dispute-approved', message: 'Merchant approved the current dispute draft.' }],
+      }));
+    });
   });
 
   document.querySelector('[data-add-merchant]')?.addEventListener('click', () => {
