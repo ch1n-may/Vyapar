@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "preview": "vercel deploy",
+    "deploy": "vercel deploy --prod",
+    "build": "node -e \"console.log('No build step required')\""
   }
 }
