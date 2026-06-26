@@ -124,6 +124,12 @@ const server = createServer(async (req, res) => {
           res.end(JSON.stringify({ ok: false, error: 'Merchant not found' }));
           return;
         }
+        const passcodeHash = hashPasscode(String(parsed?.passcode || ''));
+        if (merchant.passcodeHash && merchant.passcodeHash !== passcodeHash) {
+          res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Invalid passcode' }));
+          return;
+        }
         const token = randomUUID();
         const session = {
           token,
@@ -173,6 +179,7 @@ const server = createServer(async (req, res) => {
           language: parsed.language || 'Hindi',
           fallbackLanguage: parsed.fallbackLanguage || 'English',
           role: parsed.role || 'Owner',
+          passcodeHash: parsed.passcode ? hashPasscode(String(parsed.passcode)) : '',
           channels: Array.isArray(parsed.channels) ? parsed.channels : ['WhatsApp'],
           status: 'Draft',
           approvals: true,

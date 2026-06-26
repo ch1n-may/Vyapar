@@ -102,10 +102,11 @@ async function hydrateStateFromServer() {
 }
 
 async function createSession(merchantId) {
+  const passcode = document.querySelector('[data-passcode]')?.value.trim() || '';
   const response = await fetch('/api/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ merchantId }),
+    body: JSON.stringify({ merchantId, passcode }),
   });
   const result = await response.json();
   if (result?.ok && result.session) {
@@ -773,6 +774,7 @@ function bindEvents() {
     const state = loadState();
     const count = state.merchants.length + 1;
     const id = `msme-${String(count).padStart(3, '0')}`;
+    const passcode = `merchant-${count}`;
     const newMerchant = {
       id,
       businessName: `Merchant ${count}`,
@@ -780,6 +782,7 @@ function bindEvents() {
       language: 'Hindi',
       fallbackLanguage: 'English',
       role: 'Owner',
+      passcodeHash: '',
       channels: ['WhatsApp'],
       status: 'Draft',
       approvals: true,
@@ -797,7 +800,8 @@ function bindEvents() {
       selectedMerchantId: id,
       merchants: [...state.merchants, newMerchant],
     });
-    render();
+    document.querySelector('[data-passcode]').value = passcode;
+    createSession(id).then(() => render());
   });
 
   document.querySelector('[data-send-test-message]')?.addEventListener('click', () => {
