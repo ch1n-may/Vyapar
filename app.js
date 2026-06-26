@@ -623,9 +623,25 @@ function bindEvents() {
   document.querySelector('[data-file-upload]')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    document.querySelector('[data-settlement-input]').value = text;
-    document.querySelector('[data-summary-box]').textContent = `Loaded ${file.name}. Ready to analyze.`;
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      const response = await fetch('/api/pdf-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64 }),
+      });
+      const result = await response.json();
+      document.querySelector('[data-settlement-input]').value = result.text || '';
+      document.querySelector('[data-summary-box]').textContent = `Extracted text from ${file.name}. Ready to analyze.`;
+    } else {
+      const text = await file.text();
+      document.querySelector('[data-settlement-input]').value = text;
+      document.querySelector('[data-summary-box]').textContent = `Loaded ${file.name}. Ready to analyze.`;
+    }
   });
 
   document.querySelector('[data-analyze-settlement]')?.addEventListener('click', () => {

@@ -1,10 +1,14 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { extname, join, dirname } from 'node:path';
+import { promisify } from 'node:util';
 
 const port = process.env.PORT || 3000;
 const root = process.cwd();
 const stateFile = join(root, 'data', 'state.json');
+const pythonExe = 'C:\\Users\\Chinmay\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe';
+const execFileAsync = promisify(execFile);
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -27,6 +31,26 @@ async function readJsonFile(path, fallback = null) {
 async function writeJsonFile(path, value) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(value, null, 2), 'utf8');
+}
+
+async function extractPdfTextFromBase64(base64) {
+  const script = String.raw`
+import base64, sys, json
+from io import BytesIO
+from pypdf import PdfReader
+
+data = base64.b64decode(sys.argv[1])
+reader = PdfReader(BytesIO(data))
+text = []
+for page in reader.pages:
+    try:
+        text.append(page.extract_text() or "")
+    except Exception:
+        pass
+print(json.dumps({"text": "\n".join(text)}))
+`;
+  const { stdout } = await execFileAsync(pythonExe, ['-c', script, base64], { maxBuffer: 5_000_000 });
+  return JSON.parse(stdout).text || '';
 }
 
 async function getState() {
@@ -109,6 +133,26 @@ const server = createServer(async (req, res) => {
       } catch {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Invalid message payload' }));
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/pdf-extract' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 10_000_000) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = JSON.parse(body || '{}');
+        const text = await extractPdfTextFromBase64(parsed.base64 || '');
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, text }));
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Unable to extract PDF text' }));
       }
     });
     return;
