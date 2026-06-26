@@ -30,7 +30,7 @@ const defaultState = {
       ],
       inbox: [
         { from: 'WhatsApp', message: 'Bhai is hafte kitna kamaya?', type: 'seller' },
-        { from: 'System', message: 'Recovered Rs 1,240 from Amazon mismatch.', type: 'system' },
+        { from: 'Vyapar OS', message: 'Recovered Rs 1,240 from Amazon mismatch.', type: 'system' },
       ],
       packProof: [{ title: 'Order A-1001', detail: 'Video stored with AWB timestamp', status: 'Ready' }],
       weeklySummary: {
@@ -477,6 +477,7 @@ function appTemplate(state) {
             </div>
             <div class="actions">
               <button data-send-test-message>Send test summary</button>
+              <button data-send-custom-message type="button">Send sample message</button>
             </div>
           </article>
 
@@ -717,6 +718,32 @@ function bindEvents() {
         { from: 'Vyapar OS', message: `You recovered ${money(merchant.weeklySummary.recovered)} this week.`, type: 'system' },
       ],
       logs: [...merchant.logs, { ts: new Date().toISOString(), type: 'inbox-test', message: 'Test summary message sent to inbox simulator.' }],
+    }));
+  });
+
+  document.querySelector('[data-send-custom-message]')?.addEventListener('click', async () => {
+    const state = loadState();
+    const merchant = state.merchants.find((item) => item.id === state.selectedMerchantId);
+    const sampleText = merchant.language === 'Hindi' ? 'Bhai, kitna kamaya aur dispute kya hai?' : 'How much did I earn and what is the dispute status?';
+    const response = await fetch('/api/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantId: merchant.id,
+        language: merchant.language,
+        text: sampleText,
+        role: merchant.role,
+      }),
+    });
+    const result = await response.json();
+    updateMerchant((current) => ({
+      ...current,
+      inbox: [
+        ...current.inbox,
+        { from: 'Merchant', message: sampleText, type: 'seller' },
+        { from: 'Vyapar OS', message: result.replyText || 'No reply generated.', type: 'system' },
+      ],
+      logs: [...current.logs, { ts: new Date().toISOString(), type: 'message-routed', message: 'Sample message routed through /api/message.' }],
     }));
   });
 

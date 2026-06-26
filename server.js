@@ -83,10 +83,26 @@ const server = createServer(async (req, res) => {
     req.on('end', () => {
       try {
         const parsed = JSON.parse(body || '{}');
+        const text = String(parsed?.text || '').toLowerCase();
+        const language = parsed?.language || 'Hindi';
+        let replyText = `Received message for ${parsed?.merchantId || 'unknown merchant'}.`;
+        if (text.includes('kamaya') || text.includes('earn') || text.includes('profit')) {
+          replyText = language === 'Hindi'
+            ? 'Aapne is hafte ke liye earn summary dekh liya. Main recovery aur profit details bhej raha hoon.'
+            : 'You have the weekly earnings summary. I am sending the recovery and profit details.';
+        } else if (text.includes('dispute')) {
+          replyText = language === 'Hindi'
+            ? 'Dispute draft tayyar hai. Approval milte hi main next step dikhata hoon.'
+            : 'The dispute draft is ready. Once approved, I will show the next step.';
+        } else if (text.includes('stock')) {
+          replyText = language === 'Hindi'
+            ? 'Stock alert mila. Main low-stock items list kar raha hoon.'
+            : 'Stock alert received. I am listing the low-stock items.';
+        }
         const reply = {
           ok: true,
           received: parsed,
-          replyText: `Received message for ${parsed?.merchantId || 'unknown merchant'}.`,
+          replyText,
         };
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(reply));
