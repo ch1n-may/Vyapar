@@ -318,6 +318,12 @@ function appTemplate(state) {
               <button data-add-merchant type="button">Add merchant</button>
               <button data-export-backup type="button">Export backup</button>
             </div>
+            <div class="stack" style="margin-top:12px">
+              <label>
+                Restore backup
+                <input type="file" accept=".json" data-restore-backup />
+              </label>
+            </div>
           </article>
 
           <article class="panel">
@@ -713,6 +719,25 @@ function bindEvents() {
       ...merchant,
       logs: [...merchant.logs, { ts: new Date().toISOString(), type: 'backup-exported', message: 'Workspace backup exported as JSON.' }],
     }));
+  });
+
+  document.querySelector('[data-restore-backup]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      if (!payload?.state?.merchants?.length) {
+        alert('Backup file does not contain a valid Vyapar OS state.');
+        return;
+      }
+
+      localStorage.setItem(storageKey, JSON.stringify(payload.state));
+      render();
+    } catch {
+      alert('Could not restore that backup file.');
+    }
   });
 }
 
