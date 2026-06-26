@@ -55,6 +55,11 @@ function loadState() {
 
 function saveState(nextState) {
   localStorage.setItem(storageKey, JSON.stringify(nextState));
+  fetch('/api/state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(nextState),
+  }).catch(() => {});
 }
 
 function loadAuth() {
@@ -67,6 +72,21 @@ function loadAuth() {
 
 function saveAuth(value) {
   localStorage.setItem(authKey, JSON.stringify(value));
+}
+
+async function hydrateStateFromServer() {
+  try {
+    const response = await fetch('/api/state');
+    if (!response.ok) return;
+    const serverState = await response.json();
+    if (serverState?.merchants?.length) {
+      const merged = { ...defaultState, ...serverState };
+      localStorage.setItem(storageKey, JSON.stringify(merged));
+      render();
+    }
+  } catch {
+    // keep local-only mode
+  }
 }
 
 function escapeHtml(value) {
@@ -742,3 +762,4 @@ function bindEvents() {
 }
 
 render();
+hydrateStateFromServer();
