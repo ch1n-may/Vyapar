@@ -474,4 +474,6 @@ app.get("*", (req, res, next) => {
 });
 
 // Vercel serverless function handler
-export default app;
+export default function handler(req, res) {
+  app(req, res);
+}
