@@ -58,7 +58,7 @@ export default function Sidebar({ activeTab, setActiveTab }: { activeTab: string
               Vyapar OS
             </span>
             <span className="text-[9px] text-text-sec font-medium leading-none">
-              आपकी दुकान, खुद चलती है
+              Your self-running store
             </span>
           </div>
         </div>

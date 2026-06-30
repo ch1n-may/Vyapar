@@ -80,7 +80,7 @@ export default function AlertList() {
     <div className="flex flex-col gap-2 select-none">
       <div className="flex items-center justify-between pb-1">
         <h2 className="text-[12px] uppercase font-bold text-text-pri text-stroke-xs tracking-wider">
-          Critical Store Alerts (तुरंत ध्यान दें)
+          Critical Store Alerts (Action Required)
         </h2>
         <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-semantic-red text-white">
           {alerts.length} Urgent

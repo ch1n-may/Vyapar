@@ -20,10 +20,15 @@ export const palette = {
 };
 
 export const navItems = [
-  { section: "AI", label: "AI", icon: "🤖" },
-  { section: "Store", label: "Store", icon: "🏬" },
-  { section: "Finance", label: "Finance", icon: "💰" },
-  { section: "Grow", label: "Grow", icon: "📈" },
+  { section: "Home", label: "Home", icon: "🏠" },
+  { section: "Orders", label: "Orders", icon: "📦" },
+  { section: "Products", label: "Products", icon: "🏷️" },
+  { section: "Customers", label: "Customers", icon: "👥" },
+  { section: "Analytics", label: "Analytics", icon: "📊" },
+  { section: "Discounts", label: "Discounts", icon: "💸" },
+  { section: "Emails", label: "WhatsApp & Emails", icon: "💬" },
+  { section: "ABTesting", label: "A/B Testing", icon: "🧪" },
+  { section: "Integrations", label: "Integrations", icon: "🔌" },
 ];
 
 export const platforms = [
@@ -33,14 +38,14 @@ export const platforms = [
 ];
 
 export const initMessages = [
-  { from: "ai", text: "👋 नमस्ते! मैंने आज के RTO ऑर्डर्स की जाँच की और 3 जोखिम भरे ऑर्डर्स पाए हैं। आप इनको रिटर्न या रिफंड कर देना चाहते हैं?" },
-  { from: "ai", text: "📈 स्टॉक्स में 2 आइटम कम हैं। क्या आप स्टॉक रीक्वेस्ट भेजना चाहते हैं?" },
-  { from: "ai", text: "💳 आज के पेमेंट्स में 1 भुगतान विफल हुआ है। इसे रीट्राई करें?" },
+  { from: "ai", text: "👋 Hello! I checked today's RTO orders and found 3 high-risk orders. Would you like to hold shipment?" },
+  { from: "ai", text: "📈 2 items are low in stock. Would you like to send a stock reorder request?" },
+  { from: "ai", text: "💳 1 payment failed today. Would you like to retry?" },
 ];
 
 export const sampleEvents = [
-  { type: "order", platform: "Amazon", text: "नया ऑर्डर #12345", timeAgo: "2m" },
-  { type: "rto", platform: "Flipkart", text: "RTO ऑर्डर #54321", timeAgo: "5m" },
-  { type: "payment", platform: "Meesho", text: "पेमेंट सफल #9876", timeAgo: "10m" },
-  { type: "stock", platform: "Amazon", text: "स्टॉक कम: प्रोडक्ट A", timeAgo: "15m" },
+  { type: "order", platform: "Amazon", text: "New Order #12345", timeAgo: "2m" },
+  { type: "rto", platform: "Flipkart", text: "RTO Order #54321", timeAgo: "5m" },
+  { type: "payment", platform: "Meesho", text: "Payment Successful #9876", timeAgo: "10m" },
+  { type: "stock", platform: "Amazon", text: "Low Stock: Product A", timeAgo: "15m" },
 ];
