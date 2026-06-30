@@ -479,7 +479,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Serve frontend build static files
-const distPath = path.join(__dirname, "../frontend/dist");
+const distPath = path.join(__dirname, "frontend/dist");
 app.use(express.static(distPath));
 
 // Fallback all non-API GET requests to index.html for React Router
