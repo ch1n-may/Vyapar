@@ -1,0 +1,113 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  /* Light mode (default root) */
+  --bg: #c7ecee;
+  --surface: #b8e4e6;
+  --card: #d4f1f2;
+  --border: rgba(0, 0, 0, 0.12);
+  --text-pri: #eb4d4b;
+  --text-outline: #000000;
+  --text-sec: #c93a38;
+  --text-mut: rgba(235, 77, 75, 0.6);
+  --accent: #eb4d4b;
+  --accent-text: #ffffff;
+  
+  /* Semantic Status Colors */
+  --red: #ef4444;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --amz: #ff9900;
+  --flipkart: #F37521;
+  --meesho: #9B5CF5;
+}
+
+[data-theme="dark"] {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --card: #0f0f0f;
+  --border: rgba(192, 132, 252, 0.15);
+  --text-pri: #c084fc;
+  --text-outline: #ffffff;
+  --text-sec: #a78bfa;
+  --text-mut: rgba(192, 132, 252, 0.5);
+  --accent: #a855f7;
+  --accent-text: #000000;
+  --glow-1: rgba(192, 132, 252, 1);
+  --glow-2: rgba(168, 85, 247, 0.85);
+  --glow-3: rgba(139, 92, 246, 0.5);
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-border-theme: var(--border);
+  --color-text-pri: var(--text-pri);
+  --color-text-sec: var(--text-sec);
+  --color-text-mut: var(--text-mut);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  
+  --color-semantic-red: var(--red);
+  --color-semantic-green: var(--green);
+  --color-semantic-amber: var(--amber);
+  --color-semantic-blue: var(--blue);
+  --color-brand-amz: var(--amz);
+  --color-brand-flipkart: var(--flipkart);
+  --color-brand-meesho: var(--meesho);
+}
+
+/* Custom Outlines & Glow Rules */
+.text-stroke-lg {
+  -webkit-text-stroke: 1.5px var(--text-outline);
+}
+.text-stroke-md {
+  -webkit-text-stroke: 1px var(--text-outline);
+}
+.text-stroke-sm {
+  -webkit-text-stroke: 0.4px var(--text-outline);
+}
+.text-stroke-xs {
+  -webkit-text-stroke: 0.3px var(--text-outline);
+}
+
+/* Dark mode text glow */
+[data-theme="dark"] .text-glow {
+  filter: drop-shadow(0 0 6px var(--glow-1))
+          drop-shadow(0 0 18px var(--glow-2))
+          drop-shadow(0 0 40px var(--glow-3));
+}
+
+/* Base resets */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg);
+  color: var(--text-sec);
+  overflow: hidden;
+}
+
+/* Custom scrollbars */
+.scrollable-content::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollable-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollable-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.scrollable-content::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}

@@ -7,6 +7,6 @@
     "start": "node server.js",
     "preview": "vercel deploy",
     "deploy": "vercel deploy --prod",
-    "build": "node -e \"console.log('No build step required')\""
+    "build": "cd frontend && npm install && npm run build"
   }
 }

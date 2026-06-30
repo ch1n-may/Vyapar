@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 const port = process.env.PORT || 3000;
 const root = process.cwd();
-const dataDir = join(root, 'data');
+const dataDir = process.env.VERCEL ? '/tmp/data' : join(root, 'data');
 const indexFile = join(dataDir, 'state.json');
 const merchantsDir = join(dataDir, 'merchants');
 const sessionsDir = join(dataDir, 'sessions');
@@ -876,7 +876,7 @@ const server = createServer(async (req, res) => {
   }
 
   const urlPath = url.pathname === '/' ? '/index.html' : url.pathname;
-  const filePath = join(root, urlPath);
+  const filePath = join(root, 'frontend', 'dist', urlPath);
 
   try {
     const data = await readFile(filePath);
@@ -884,7 +884,7 @@ const server = createServer(async (req, res) => {
     res.end(data);
   } catch {
     try {
-      const data = await readFile(join(root, 'index.html'));
+      const data = await readFile(join(root, 'frontend', 'dist', 'index.html'));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(data);
     } catch {
@@ -897,3 +897,5 @@ const server = createServer(async (req, res) => {
 server.listen(port, () => {
   console.log(`Vyapar OS running at http://localhost:${port}`);
 });
+
+export default server;
