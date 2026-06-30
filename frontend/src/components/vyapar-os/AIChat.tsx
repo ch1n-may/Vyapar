@@ -1,6 +1,6 @@
-// src/components/vyapar-os/AIChat.tsx
 import React, { useState, useRef, useEffect } from "react";
 import { initMessages } from "../../lib/vyapar-os/constants";
+import { getApiUrl } from "../../config";
 
 interface Message {
   from: "ai" | "user";
@@ -25,7 +25,7 @@ export const AIChat: React.FC = () => {
     const newMsg: Message = { from: "user", text };
     setMessages((prev) => [...prev, newMsg]);
 
-    fetch("http://localhost:3001/api/chat", {
+    fetch(getApiUrl("/api/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text })

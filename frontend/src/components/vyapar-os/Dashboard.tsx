@@ -9,10 +9,11 @@ import { OrdersTable } from "./OrdersTable";
 import { LiveTicker } from "./LiveTicker";
 import { AIChat } from "./AIChat";
 import { StatusPill } from "./StatusPill";
+import { getApiUrl } from "../../config";
 
 export const Dashboard: React.FC = () => {
   const [activeSection, setActiveSection] = useState("Home");
-  const [merchantData, setMerchantData] = useState<any>(null);
+  const [, setMerchantData] = useState<any>(null);
 
   // Mock states for interactive elements
   const [orders, setOrders] = useState<any[]>([
@@ -33,7 +34,7 @@ export const Dashboard: React.FC = () => {
     { id: "P-005", name: "Casual Kurti (White)", sku: "CAS-KUR-WHT", stock: 18, price: "₹799", platforms: ["Flipkart", "Meesho"], status: "Draft" },
   ]);
 
-  const [customers, setCustomers] = useState<any[]>([
+  const [customers] = useState<any[]>([
     { id: "C-9918", name: "Ramesh Kumar", phone: "+91 98123 45678", orders: 12, locations: "New Delhi", rtoAlert: "None" },
     { id: "C-1204", name: "Pooja Sharma", phone: "+91 88776 55443", orders: 8, locations: "Mumbai", rtoAlert: "⚠️ 3 fake returns last 2 months" },
     { id: "C-3021", name: "Amit Patel", phone: "+91 70112 23344", orders: 15, locations: "Ahmedabad", rtoAlert: "None" },
@@ -66,12 +67,12 @@ export const Dashboard: React.FC = () => {
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/merchant/msme-001")
+    fetch(getApiUrl("/api/merchant/msme-001"))
       .then((res) => res.json())
       .then((data) => setMerchantData(data))
       .catch((err) => console.error("Error fetching merchant data:", err));
 
-    fetch("http://localhost:3001/api/reports/weekly-pulse")
+    fetch(getApiUrl("/api/reports/weekly-pulse"))
       .then((res) => res.json())
       .then((data) => {
         if (data.success) setWeeklyPulse(data.report);
@@ -88,7 +89,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const holdOrder = (id: string) => {
-    fetch("http://localhost:3001/api/rto/verify-buyer", {
+    fetch(getApiUrl("/api/rto/verify-buyer"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId: id, action: "Cancel" })
@@ -105,7 +106,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const verifyCodOrder = (id: string) => {
-    fetch("http://localhost:3001/api/rto/verify-buyer", {
+    fetch(getApiUrl("/api/rto/verify-buyer"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId: id, action: "Confirm" })
@@ -138,7 +139,7 @@ export const Dashboard: React.FC = () => {
 
   const processVoice = () => {
     setIsRecording(true);
-    fetch("http://localhost:3001/api/voice-list", {
+    fetch(getApiUrl("/api/voice-list"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transcript: voiceText })
@@ -190,7 +191,7 @@ export const Dashboard: React.FC = () => {
         { orderId: "OD-66124", platform: "Meesho", price: 799, actualCommission: 30, actualShipping: 70, shipmentType: "Local" }
       ];
 
-      fetch("http://localhost:3001/api/recon/upload", {
+      fetch(getApiUrl("/api/recon/upload"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: payloadRows, merchantId: "msme-001" })
@@ -214,7 +215,7 @@ export const Dashboard: React.FC = () => {
     setDraftingOrderId(log.order_id);
     setActiveDisputeDraft("Generating support ticket with Groq AI...");
     
-    fetch("http://localhost:3001/api/recon/dispute", {
+    fetch(getApiUrl("/api/recon/dispute"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -244,7 +245,7 @@ export const Dashboard: React.FC = () => {
     setSimulatorLogs(["[Ingest] Dispatching simulated Meta webhook payload..."]);
     setSimulatorReply("");
 
-    fetch("http://localhost:3001/api/whatsapp/simulate", {
+    fetch(getApiUrl("/api/whatsapp/simulate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: simulatorInput, phone: "919876543210" })
@@ -1083,7 +1084,7 @@ export const Dashboard: React.FC = () => {
 
             <button
               onClick={() => {
-                fetch("http://localhost:3001/api/billing/create-subscription", {
+                fetch(getApiUrl("/api/billing/create-subscription"), {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ planId: "plan-pro-001", merchantId: "msme-001" })
