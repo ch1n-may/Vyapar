@@ -1,14 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "backend/server.js": {
-      "includeFiles": "frontend/dist/**"
-    }
-  },
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "backend/server.js"
-    }
-  ]
+  "buildCommand": "npm run build",
+  "outputDirectory": "frontend/dist"
 }
