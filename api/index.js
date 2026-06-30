@@ -460,19 +460,6 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
-// Serve frontend build static files
-const distPath = path.join(__dirname, "../frontend/dist");
-app.use(express.static(distPath));
-
-// Fallback all non-API GET requests to index.html for React Router
-app.get("*", (req, res, next) => {
-  if (!req.path.startsWith("/api")) {
-    res.sendFile(path.join(distPath, "index.html"));
-  } else {
-    next();
-  }
-});
-
 // Vercel serverless function handler
 export default function handler(req, res) {
   app(req, res);
