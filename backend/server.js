@@ -5,6 +5,11 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import Groq from "groq-sdk";
 import { createClient } from "@supabase/supabase-js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -473,27 +478,48 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
+// Serve frontend build static files
+const distPath = path.join(__dirname, "../frontend/dist");
+app.use(express.static(distPath));
+
+// Fallback all non-API GET requests to index.html for React Router
+app.get("*", (req, res, next) => {
+  if (!req.path.startsWith("/api")) {
+    res.sendFile(path.join(distPath, "index.html"));
+  } else {
+    next();
+  }
+});
+
 // Setup Server & WebSocket
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
 
-wss.on("connection", (ws) => {
-  console.log("Client connected to Vyapar OS Stream");
+if (!process.env.VERCEL) {
+  const wss = new WebSocketServer({ server });
 
-  // Send regular mock activity events
-  const interval = setInterval(() => {
-    const mockEvents = [
-      { type: "order", platform: "Amazon", text: `New Order #${Math.floor(10000 + Math.random() * 90000)}`, timeAgo: "1s ago" },
-      { type: "rto", platform: "Flipkart", text: "RTO Risk Detected", timeAgo: "Just now" },
-      { type: "payment", platform: "Meesho", text: "Payment Settlement Successful", timeAgo: "Just now" }
-    ];
-    const randomEvent = mockEvents[Math.floor(Math.random() * mockEvents.length)];
-    ws.send(JSON.stringify(randomEvent));
-  }, 10000);
+  wss.on("connection", (ws) => {
+    console.log("Client connected to Vyapar OS Stream");
 
-  ws.on("close", () => clearInterval(interval));
-});
+    // Send regular mock activity events
+    const interval = setInterval(() => {
+      const mockEvents = [
+        { type: "order", platform: "Amazon", text: `New Order #${Math.floor(10000 + Math.random() * 90000)}`, timeAgo: "1s ago" },
+        { type: "rto", platform: "Flipkart", text: "RTO Risk Detected", timeAgo: "Just now" },
+        { type: "payment", platform: "Meesho", text: "Payment Settlement Successful", timeAgo: "Just now" }
+      ];
+      const randomEvent = mockEvents[Math.floor(Math.random() * mockEvents.length)];
+      ws.send(JSON.stringify(randomEvent));
+    }, 10000);
 
-server.listen(port, () => {
-  console.log(`Vyapar OS Backend server running on port ${port}`);
-});
+    ws.on("close", () => clearInterval(interval));
+  });
+}
+
+// Only listen locally, not in Vercel
+if (!process.env.VERCEL) {
+  server.listen(port, () => {
+    console.log(`Vyapar OS Backend server running on port ${port}`);
+  });
+}
+
+export default app;
