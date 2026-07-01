@@ -7,6 +7,7 @@ import Groq from "groq-sdk";
 import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,8 +19,28 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors({ origin: "*" }));
-app.use(express.json());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://vyapar-rho.vercel.app",
+  "https://vyapar-master.vercel.app",
+  "https://vyapar-a094kt2cn-chinmays-projects-c20ed5a5.vercel.app"
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
+    return callback(new Error("CORS policy violation"));
+  }
+}));
+
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || "MOCK_KEY"
@@ -711,6 +732,11 @@ async function downloadWhatsAppMedia(mediaId) {
     throw new Error("WHATSAPP_ACCESS_TOKEN is missing.");
   }
 
+  // Sanitize mediaId to protect against path traversal attacks
+  if (!/^[a-zA-Z0-9_\-]+$/.test(mediaId)) {
+    throw new Error("Invalid media ID format.");
+  }
+
   // 1. Get media URL metadata
   const getUrl = `https://graph.facebook.com/v21.0/${mediaId}`;
   const getRes = await fetch(getUrl, {
@@ -755,8 +781,40 @@ async function transcribeAudio(filePath) {
   return response.text;
 }
 
-// WhatsApp Message Ingestion Handler (POST)
-app.post("/api/whatsapp", async (req, res) => {
+// Middleware to verify incoming WhatsApp webhook signatures
+function validateWhatsAppWebhookSignature(req, res, next) {
+  const signature = req.headers["x-hub-signature-256"];
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+
+  // Skip validation if secret is not set (e.g. during onboarding / dev before adding secrets)
+  if (!appSecret) {
+    console.warn("⚠️ WHATSAPP_APP_SECRET is not configured in env. Webhook signature validation skipped.");
+    return next();
+  }
+
+  if (!signature) {
+    console.error("❌ Webhook Signature Error: X-Hub-Signature-256 header is missing.");
+    return res.status(401).send("Signature missing");
+  }
+
+  const elements = signature.split("=");
+  const signatureHash = elements[1];
+
+  const expectedHash = crypto
+    .createHmac("sha256", appSecret)
+    .update(req.rawBody || "")
+    .digest("hex");
+
+  if (signatureHash !== expectedHash) {
+    console.error("❌ Webhook Signature Error: Signature verification failed.");
+    return res.status(401).send("Invalid signature");
+  }
+
+  next();
+}
+
+// WhatsApp Message Ingestion Handler (POST) - Signature verification middleware added
+app.post("/api/whatsapp", validateWhatsAppWebhookSignature, async (req, res) => {
   const body = req.body;
 
   if (body.object && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
