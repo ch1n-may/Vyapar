@@ -115,6 +115,53 @@ export const Dashboard: React.FC = () => {
   const [userRole, setUserRole] = useState<"Owner" | "Accountant">("Owner");
   const [approvals, setApprovals] = useState<any[]>([]);
 
+  // Expanded Settings Interactive State
+  const [activeSettingTab, setActiveSettingTab] = useState<"general" | "team" | "channels" | "shipping" | "keys">("general");
+  const [teamMembers, setTeamMembers] = useState<any[]>([
+    { id: "tm-1", name: "Vijay Dukaandar", email: "vijay@vyapaar.in", role: "Owner", status: "Active" },
+    { id: "tm-2", name: "Rajesh Kumar", email: "rajesh@vyapaar.in", role: "Accountant", status: "Active" },
+    { id: "tm-3", name: "Anjali Sharma", email: "anjali@vyapaar.in", role: "Manager", status: "Invited" },
+  ]);
+  const [shippingZones, setShippingZones] = useState<any[]>([
+    { id: "sz-1", name: "Domestic Express", region: "All India", price: "₹99", transitTime: "2-4 days" },
+    { id: "sz-2", name: "Local Delivery", region: "Delhi NCR", price: "₹49", transitTime: "Same day" },
+  ]);
+  const [returnReasons, setReturnReasons] = useState<any[]>([
+    { id: "rr-1", reason: "Size did not fit", code: "SIZE_FIT", active: true },
+    { id: "rr-2", reason: "Product quality is poor", code: "QUALITY_ISSUE", active: true },
+    { id: "rr-3", reason: "Wrong item delivered", code: "WRONG_ITEM", active: true },
+  ]);
+  const [apiKeys, setApiKeys] = useState<any[]>([
+    { id: "ak-1", name: "Groq Webhook Access", key: "pk_live_51Ny...a8B7", created: "15 June 2026" },
+    { id: "ak-2", name: "Supabase DB Connector", key: "pk_live_51Mz...q3X9", created: "28 June 2026" },
+  ]);
+  const [storeName, setStoreName] = useState("Vyapar OS India");
+  const [storeEmail, setStoreEmail] = useState("contact@vyapaar.in");
+  const [storePhone, setStorePhone] = useState("+91 89717 72472");
+  const [storeAddress, setStoreAddress] = useState("12, Chandni Chowk Road, New Delhi, 110006");
+  const [storeCurrency, setStoreCurrency] = useState("INR (₹)");
+  const [salesChannels, setSalesChannels] = useState<any[]>([
+    { name: "Amazon India", key: "amazon", connected: true, orderCount: 342 },
+    { name: "Flipkart", key: "flipkart", connected: true, orderCount: 154 },
+    { name: "Meesho", key: "meesho", connected: true, orderCount: 98 },
+    { name: "WhatsApp Storefront", key: "whatsapp", connected: true, orderCount: 27 },
+  ]);
+  
+  // Temporary Form Inputs
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("Manager");
+  
+  const [newZoneName, setNewZoneName] = useState("");
+  const [newZoneRegion, setNewZoneRegion] = useState("");
+  const [newZonePrice, setNewZonePrice] = useState("");
+  const [newZoneTime, setNewZoneTime] = useState("");
+  
+  const [newReasonText, setNewReasonText] = useState("");
+  const [newReasonCode, setNewReasonCode] = useState("");
+
+  const [newKeyName, setNewKeyName] = useState("");
+
   useEffect(() => {
     fetch(getApiUrl("/api/merchant/msme-001"))
       .then((res) => res.json())
@@ -1761,85 +1808,740 @@ export const Dashboard: React.FC = () => {
   };
 
 
-  const renderSettings = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Settings</h2>
-      
-      {/* Plan Details Card */}
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>CURRENT SUBSCRIPTION PLAN</div>
-          <div style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-pri)", marginTop: "4px" }}>
-            {isSubscribed ? "🚀 Vyapar OS Pro Plan" : "🆕 Free Trial - Phase 0"}
+  const renderSettings = () => {
+    const handleAddTeamMember = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newMemberName.trim() || !newMemberEmail.trim()) return;
+      const newMember = {
+        id: `tm-${Date.now()}`,
+        name: newMemberName,
+        email: newMemberEmail,
+        role: newMemberRole,
+        status: "Active"
+      };
+      setTeamMembers([...teamMembers, newMember]);
+      setNewMemberName("");
+      setNewMemberEmail("");
+    };
+
+    const handleRemoveTeamMember = (id: string) => {
+      setTeamMembers(teamMembers.filter(m => m.id !== id));
+    };
+
+    const handleToggleChannel = (key: string) => {
+      setSalesChannels(salesChannels.map(c => c.key === key ? { ...c, connected: !c.connected } : c));
+    };
+
+    const handleAddZone = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newZoneName.trim() || !newZonePrice.trim()) return;
+      const newZone = {
+        id: `sz-${Date.now()}`,
+        name: newZoneName,
+        region: newZoneRegion || "All Regions",
+        price: newZonePrice.startsWith("₹") ? newZonePrice : `₹${newZonePrice}`,
+        transitTime: newZoneTime || "3-5 days"
+      };
+      setShippingZones([...shippingZones, newZone]);
+      setNewZoneName("");
+      setNewZoneRegion("");
+      setNewZonePrice("");
+      setNewZoneTime("");
+    };
+
+    const handleRemoveZone = (id: string) => {
+      setShippingZones(shippingZones.filter(z => z.id !== id));
+    };
+
+    const handleAddReason = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newReasonText.trim() || !newReasonCode.trim()) return;
+      const newReason = {
+        id: `rr-${Date.now()}`,
+        reason: newReasonText,
+        code: newReasonCode.toUpperCase().replace(/\s+/g, "_"),
+        active: true
+      };
+      setReturnReasons([...returnReasons, newReason]);
+      setNewReasonText("");
+      setNewReasonCode("");
+    };
+
+    const handleRemoveReason = (id: string) => {
+      setReturnReasons(returnReasons.filter(r => r.id !== id));
+    };
+
+    const handleGenerateKey = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newKeyName.trim()) return;
+      const randomKey = `pk_live_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+      const newKey = {
+        id: `ak-${Date.now()}`,
+        name: newKeyName,
+        key: randomKey,
+        created: new Date().toLocaleDateString("en-IN", { day: 'numeric', month: 'long', year: 'numeric' })
+      };
+      setApiKeys([...apiKeys, newKey]);
+      setNewKeyName("");
+    };
+
+    const handleRemoveKey = (id: string) => {
+      setApiKeys(apiKeys.filter(k => k.id !== id));
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        {/* Header and Quick stats */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-pri)" }}>Store Configuration</h2>
+            <p style={{ fontSize: "12px", color: "var(--text-sec)" }}>Manage your Vyapar OS preferences, sales integrations, team roles and policies.</p>
           </div>
-          <p style={{ fontSize: "11px", color: "var(--text-sec)", marginTop: "2px" }}>
-            {isSubscribed ? "Active. Success-fee billing connected (15% of recovered fees)." : "Limit reached. Upgrade to unlock all Phase 1 capabilities."}
-          </p>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <span style={{ fontSize: "11px", backgroundColor: "var(--accent-pale)", color: "var(--accent)", border: "1px solid var(--border)", padding: "4px 8px", borderRadius: "12px", fontWeight: 500 }}>
+              Store Currency: {storeCurrency}
+            </span>
+          </div>
         </div>
-        {!isSubscribed && (
-          <button
-            onClick={() => setIsUpgrading(true)}
-            style={{
-              padding: "8px 16px",
-              background: "var(--accent)",
-              color: "var(--accent-text)",
-              border: "none",
-              borderRadius: "6px",
-              fontWeight: 600,
-              fontSize: "12px",
-              cursor: "pointer"
-            }}
-          >
-            Upgrade to Pro
-          </button>
-        )}
-      </div>
 
-      {/* Role Config Panel */}
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>Role-based Access Control (RBAC)</div>
-        <p style={{ fontSize: "11px", color: "var(--text-sec)" }}>Switch user role to test approval queue flows and permission locks.</p>
-        <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
-          <button
-            onClick={() => setUserRole("Owner")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              background: userRole === "Owner" ? "var(--accent-pale)" : "transparent",
-              color: userRole === "Owner" ? "var(--accent)" : "var(--text-sec)",
-              fontWeight: userRole === "Owner" ? 600 : 400,
-              cursor: "pointer"
-            }}
-          >
-            👑 Owner Role
-          </button>
-          <button
-            onClick={() => setUserRole("Accountant")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              background: userRole === "Accountant" ? "var(--accent-pale)" : "transparent",
-              color: userRole === "Accountant" ? "var(--accent)" : "var(--text-sec)",
-              fontWeight: userRole === "Accountant" ? 600 : 400,
-              cursor: "pointer"
-            }}
-          >
-            📊 Accountant Role
-          </button>
+        {/* Outer Settings Panel Container */}
+        <div style={{ display: "flex", gap: "24px", minHeight: "560px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+          {/* Tab Navigation Sidebar */}
+          <div style={{ width: "220px", minWidth: "220px", borderRight: "1px solid var(--border)", padding: "16px 12px", display: "flex", flexDirection: "column", gap: "6px", backgroundColor: "rgba(0,0,0,0.05)" }}>
+            <button
+              onClick={() => setActiveSettingTab("general")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: activeSettingTab === "general" ? "var(--accent-pale)" : "transparent",
+                color: activeSettingTab === "general" ? "var(--accent)" : "var(--text-sec)",
+                textAlign: "left",
+                fontSize: "12.5px",
+                fontWeight: activeSettingTab === "general" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span>🏪</span> General Settings
+            </button>
+            <button
+              onClick={() => setActiveSettingTab("team")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: activeSettingTab === "team" ? "var(--accent-pale)" : "transparent",
+                color: activeSettingTab === "team" ? "var(--accent)" : "var(--text-sec)",
+                textAlign: "left",
+                fontSize: "12.5px",
+                fontWeight: activeSettingTab === "team" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span>👥</span> Team Members
+            </button>
+            <button
+              onClick={() => setActiveSettingTab("channels")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: activeSettingTab === "channels" ? "var(--accent-pale)" : "transparent",
+                color: activeSettingTab === "channels" ? "var(--accent)" : "var(--text-sec)",
+                textAlign: "left",
+                fontSize: "12.5px",
+                fontWeight: activeSettingTab === "channels" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span>🔗</span> Sales Channels
+            </button>
+            <button
+              onClick={() => setActiveSettingTab("shipping")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: activeSettingTab === "shipping" ? "var(--accent-pale)" : "transparent",
+                color: activeSettingTab === "shipping" ? "var(--accent)" : "var(--text-sec)",
+                textAlign: "left",
+                fontSize: "12.5px",
+                fontWeight: activeSettingTab === "shipping" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span>🚚</span> Shipping & Returns
+            </button>
+            <button
+              onClick={() => setActiveSettingTab("keys")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: activeSettingTab === "keys" ? "var(--accent-pale)" : "transparent",
+                color: activeSettingTab === "keys" ? "var(--accent)" : "var(--text-sec)",
+                textAlign: "left",
+                fontSize: "12.5px",
+                fontWeight: activeSettingTab === "keys" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <span>🔑</span> Keys & Webhooks
+            </button>
+
+            {/* Quick RBAC switch at bottom of settings sidebar */}
+            <div style={{ marginTop: "auto", borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
+              <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-mut)", textTransform: "uppercase", marginBottom: "8px", paddingLeft: "8px" }}>
+                Active Session Role
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <button
+                  onClick={() => setUserRole("Owner")}
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border)",
+                    background: userRole === "Owner" ? "var(--accent-pale)" : "transparent",
+                    color: userRole === "Owner" ? "var(--accent)" : "var(--text-sec)",
+                    cursor: "pointer",
+                    textAlign: "left"
+                  }}
+                >
+                  👑 Owner (All Permits)
+                </button>
+                <button
+                  onClick={() => setUserRole("Accountant")}
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border)",
+                    background: userRole === "Accountant" ? "var(--accent-pale)" : "transparent",
+                    color: userRole === "Accountant" ? "var(--accent)" : "var(--text-sec)",
+                    cursor: "pointer",
+                    textAlign: "left"
+                  }}
+                >
+                  📊 Accountant Role
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Content Area */}
+          <div style={{ flex: 1, padding: "24px", overflowY: "auto" }}>
+            {activeSettingTab === "general" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-pri)" }}>General Settings</h3>
+                  <p style={{ fontSize: "11.5px", color: "var(--text-sec)" }}>Basic details of your retail store integration and locale parameters.</p>
+                </div>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-pri)" }}>Store Name</label>
+                    <input
+                      type="text"
+                      value={storeName}
+                      onChange={(e) => setStoreName(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text-pri)", fontSize: "12px" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-pri)" }}>Support Email</label>
+                      <input
+                        type="email"
+                        value={storeEmail}
+                        onChange={(e) => setStoreEmail(e.target.value)}
+                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text-pri)", fontSize: "12px" }}
+                      />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-pri)" }}>WhatsApp Gateway</label>
+                      <input
+                        type="text"
+                        value={storePhone}
+                        onChange={(e) => setStorePhone(e.target.value)}
+                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text-pri)", fontSize: "12px" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-pri)" }}>Business Address</label>
+                    <textarea
+                      value={storeAddress}
+                      onChange={(e) => setStoreAddress(e.target.value)}
+                      rows={3}
+                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text-pri)", fontSize: "12px", resize: "none" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-pri)" }}>Store Currency</label>
+                    <select
+                      value={storeCurrency}
+                      onChange={(e) => setStoreCurrency(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-pri)", fontSize: "12px" }}
+                    >
+                      <option value="INR (₹)">INR (₹) - Indian Rupee</option>
+                      <option value="USD ($)">USD ($) - US Dollar</option>
+                      <option value="EUR (€)">EUR (€) - Euro</option>
+                      <option value="GBP (£)">GBP (£) - British Pound</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Plan Details Card inside General tab */}
+                <div style={{ border: "1px solid var(--border)", padding: "16px", borderRadius: "8px", background: "rgba(0,0,0,0.05)", marginTop: "12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "var(--text-mut)", fontWeight: 600, textTransform: "uppercase" }}>CURRENT SUBSCRIPTION PLAN</div>
+                      <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-pri)", marginTop: "2px" }}>
+                        {isSubscribed ? "🚀 Vyapar OS Pro Plan" : "🆕 Free Trial - Phase 0"}
+                      </div>
+                      <p style={{ fontSize: "10.5px", color: "var(--text-sec)", marginTop: "2px" }}>
+                        {isSubscribed ? "Active. Success-fee billing connected (15% of recovered fees)." : "Limit reached. Upgrade to unlock all Phase 1 capabilities."}
+                      </p>
+                    </div>
+                    {!isSubscribed && (
+                      <button
+                        onClick={() => setIsUpgrading(true)}
+                        style={{
+                          padding: "6px 12px",
+                          background: "var(--accent)",
+                          color: "var(--accent-text)",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontWeight: 600,
+                          fontSize: "11px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Upgrade to Pro
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeSettingTab === "team" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-pri)" }}>Team Management</h3>
+                  <p style={{ fontSize: "11.5px", color: "var(--text-sec)" }}>Add colleagues and manage permission bounds across the control panels.</p>
+                </div>
+
+                {/* Invite Team Member Form */}
+                <form onSubmit={handleAddTeamMember} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px 80px", gap: "10px", background: "rgba(255,255,255,0.02)", padding: "14px", borderRadius: "8px", border: "1px solid var(--border)" }}>
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    style={{ padding: "8px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "12px" }}
+                    required
+                  />
+                  <input
+                    type="email"
+                    placeholder="name@vyapaar.in"
+                    value={newMemberEmail}
+                    onChange={(e) => setNewMemberEmail(e.target.value)}
+                    style={{ padding: "8px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "12px" }}
+                    required
+                  />
+                  <select
+                    value={newMemberRole}
+                    onChange={(e) => setNewMemberRole(e.target.value)}
+                    style={{ padding: "8px 10px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-pri)", fontSize: "12px" }}
+                  >
+                    <option value="Manager">Manager</option>
+                    <option value="Accountant">Accountant</option>
+                    <option value="Shipper">Shipper</option>
+                  </select>
+                  <button
+                    type="submit"
+                    style={{
+                      background: "var(--accent)",
+                      color: "var(--accent-text)",
+                      border: "none",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Invite
+                  </button>
+                </form>
+
+                {/* Team List Table */}
+                <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                    <thead>
+                      <tr style={{ background: "rgba(0,0,0,0.15)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                        <th style={{ padding: "10px 14px", color: "var(--text-pri)" }}>Name</th>
+                        <th style={{ padding: "10px 14px", color: "var(--text-pri)" }}>Email</th>
+                        <th style={{ padding: "10px 14px", color: "var(--text-pri)" }}>Role</th>
+                        <th style={{ padding: "10px 14px", color: "var(--text-pri)" }}>Status</th>
+                        <th style={{ padding: "10px 14px", color: "var(--text-pri)", textAlign: "right" }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamMembers.map((member) => (
+                        <tr key={member.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px 14px", color: "var(--text-pri)", fontWeight: 500 }}>{member.name}</td>
+                          <td style={{ padding: "10px 14px", color: "var(--text-sec)" }}>{member.email}</td>
+                          <td style={{ padding: "10px 14px" }}>
+                            <span style={{ fontSize: "10.5px", padding: "2px 6px", borderRadius: "4px", backgroundColor: member.role === "Owner" ? "rgba(255,149,0,0.1)" : "rgba(0,122,255,0.1)", color: member.role === "Owner" ? "var(--amber)" : "var(--blue)" }}>
+                              {member.role}
+                            </span>
+                          </td>
+                          <td style={{ padding: "10px 14px" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: member.status === "Active" ? "var(--green)" : "var(--amber)" }}>
+                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: member.status === "Active" ? "var(--green)" : "var(--amber)" }}></span>
+                              {member.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "10px 14px", textAlign: "right" }}>
+                            {member.role !== "Owner" ? (
+                              <button
+                                onClick={() => handleRemoveTeamMember(member.id)}
+                                style={{ border: "none", background: "none", color: "var(--red)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                              >
+                                Revoke
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: "11px", color: "var(--text-mut)" }}>Permanent</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeSettingTab === "channels" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-pri)" }}>Sales Channels</h3>
+                  <p style={{ fontSize: "11.5px", color: "var(--text-sec)" }}>Connect and toggle syncing behavior across multi-seller storefront networks.</p>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {salesChannels.map((channel) => (
+                    <div
+                      key={channel.key}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "16px",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        background: "rgba(255, 255, 255, 0.01)"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <span style={{ fontSize: "20px" }}>
+                          {channel.key === "amazon" ? "📦" : channel.key === "flipkart" ? "🛒" : channel.key === "meesho" ? "🛍️" : "💬"}
+                        </span>
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-pri)" }}>{channel.name}</div>
+                          <div style={{ fontSize: "10.5px", color: "var(--text-mut)" }}>Synced orders: {channel.orderCount}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span style={{ fontSize: "11px", color: channel.connected ? "var(--green)" : "var(--text-mut)" }}>
+                          {channel.connected ? "Active Hook" : "Inactive"}
+                        </span>
+                        <button
+                          onClick={() => handleToggleChannel(channel.key)}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border)",
+                            background: channel.connected ? "rgba(255,59,48,0.08)" : "var(--accent-pale)",
+                            color: channel.connected ? "var(--red)" : "var(--accent)",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: "pointer"
+                          }}
+                        >
+                          {channel.connected ? "Disconnect" : "Connect"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeSettingTab === "shipping" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-pri)" }}>Shipping Rates & Return Policies</h3>
+                  <p style={{ fontSize: "11.5px", color: "var(--text-sec)" }}>Create standard rates and define return labels for AI resolution templates.</p>
+                </div>
+
+                {/* Shipping Rates */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>Shipping Zones & Flat Rates</div>
+                  
+                  {/* Shipping Form */}
+                  <form onSubmit={handleAddZone} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 100px 70px", gap: "8px" }}>
+                    <input
+                      type="text"
+                      placeholder="Zone Name"
+                      value={newZoneName}
+                      onChange={(e) => setNewZoneName(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="Region (e.g. India)"
+                      value={newZoneRegion}
+                      onChange={(e) => setNewZoneRegion(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Price (₹)"
+                      value={newZonePrice}
+                      onChange={(e) => setNewZonePrice(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="Transit Time"
+                      value={newZoneTime}
+                      onChange={(e) => setNewZoneTime(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                    />
+                    <button
+                      type="submit"
+                      style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", borderRadius: "5px", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Add Zone
+                    </button>
+                  </form>
+
+                  {/* Zones List */}
+                  <div style={{ border: "1px solid var(--border)", borderRadius: "6px", overflow: "hidden" }}>
+                    {shippingZones.map((zone) => (
+                      <div key={zone.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.01)" }}>
+                        <div>
+                          <div style={{ fontSize: "12px", color: "var(--text-pri)", fontWeight: 600 }}>{zone.name} ({zone.region})</div>
+                          <div style={{ fontSize: "10.5px", color: "var(--text-mut)" }}>Transit: {zone.transitTime}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <span style={{ fontSize: "12px", color: "var(--text-pri)", fontWeight: 700 }}>{zone.price}</span>
+                          <button onClick={() => handleRemoveZone(zone.id)} style={{ border: "none", background: "none", color: "var(--red)", fontSize: "11px", cursor: "pointer" }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Return Reasons */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>AI-Parsed Return Reasons</div>
+                  
+                  {/* Reasons Form */}
+                  <form onSubmit={handleAddReason} style={{ display: "grid", gridTemplateColumns: "1fr 120px 70px", gap: "8px" }}>
+                    <input
+                      type="text"
+                      placeholder="Customer-facing Reason Label"
+                      value={newReasonText}
+                      onChange={(e) => setNewReasonText(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="CODE (e.g. SIZE_FIT)"
+                      value={newReasonCode}
+                      onChange={(e) => setNewReasonCode(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", borderRadius: "5px", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Add Code
+                    </button>
+                  </form>
+
+                  {/* Reasons List */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    {returnReasons.map((reason) => (
+                      <div
+                        key={reason.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "6px 12px",
+                          border: "1px solid var(--border)",
+                          borderRadius: "16px",
+                          background: "var(--surface)",
+                          fontSize: "11px"
+                        }}
+                      >
+                        <span style={{ color: "var(--text-pri)" }}>{reason.reason}</span>
+                        <span style={{ opacity: 0.5, fontStyle: "italic" }}>({reason.code})</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveReason(reason.id)}
+                          style={{ border: "none", background: "none", color: "var(--red)", fontSize: "12px", padding: 0, cursor: "pointer", marginLeft: "4px" }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeSettingTab === "keys" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-pri)" }}>API Credentials & Webhooks</h3>
+                  <p style={{ fontSize: "11.5px", color: "var(--text-sec)" }}>Generate verification tokens or check inbound WhatsApp endpoint logs.</p>
+                </div>
+
+                {/* API Keys Panel */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>Secret Access Tokens</div>
+                  
+                  {/* Create Token Form */}
+                  <form onSubmit={handleGenerateKey} style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: "8px" }}>
+                    <input
+                      type="text"
+                      placeholder="Token Identifier (e.g. Vercel deployment)"
+                      value={newKeyName}
+                      onChange={(e) => setNewKeyName(e.target.value)}
+                      style={{ padding: "6px 8px", borderRadius: "5px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-pri)", fontSize: "11px" }}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", borderRadius: "5px", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Generate Key
+                    </button>
+                  </form>
+
+                  {/* Token List */}
+                  <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+                    {apiKeys.map((key) => (
+                      <div
+                        key={key.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "12px 16px",
+                          borderBottom: "1px solid var(--border)",
+                          background: "rgba(255,255,255,0.01)"
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "12px", color: "var(--text-pri)", fontWeight: 600 }}>{key.name}</div>
+                          <div style={{ fontSize: "10px", color: "var(--text-mut)", fontFamily: "monospace" }}>{key.key}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <span style={{ fontSize: "10px", color: "var(--text-mut)" }}>Created: {key.created}</span>
+                          <button
+                            onClick={() => handleRemoveKey(key.id)}
+                            style={{ border: "none", background: "none", color: "var(--red)", fontSize: "11px", cursor: "pointer" }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Webhooks Endpoint Observer */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>Inbound Webhook Handlers</div>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", background: "rgba(0,0,0,0.1)" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-mut)", fontWeight: 500 }}>WHATSAPP WEBHOOK ENDPOINT (POST)</span>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <code style={{ flex: 1, padding: "8px", borderRadius: "5px", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--accent)", fontSize: "11.5px", fontFamily: "monospace" }}>
+                          https://vyapaar.my-backend.sh/api/webhook/whatsapp
+                        </code>
+                        <button
+                          onClick={() => navigator.clipboard.writeText("https://vyapaar.my-backend.sh/api/webhook/whatsapp")}
+                          style={{ padding: "6px 12px", fontSize: "11px", borderRadius: "5px", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-pri)", cursor: "pointer" }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span style={{ fontSize: "10.5px", color: "var(--text-mut)", fontWeight: 500 }}>STORE INTEGRATION HOOK (POST)</span>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <code style={{ flex: 1, padding: "8px", borderRadius: "5px", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--accent)", fontSize: "11.5px", fontFamily: "monospace" }}>
+                          https://vyapaar.my-backend.sh/api/webhook/store-events
+                        </code>
+                        <button
+                          onClick={() => navigator.clipboard.writeText("https://vyapaar.my-backend.sh/api/webhook/store-events")}
+                          style={{ padding: "6px 12px", fontSize: "11px", borderRadius: "5px", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-pri)", cursor: "pointer" }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Store Currency: **INR (₹)**</div>
-        <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Primary Language: **Hindi / English Bilingual**</div>
-        <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Connected Mobile: **+91 89717 72472**</div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderSupport = () => {
     const handleSendSupportMessage = () => {

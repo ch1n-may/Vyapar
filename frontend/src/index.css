@@ -3,41 +3,46 @@
 @import "tailwindcss";
 
 :root {
-  /* Premium Dark Theme by Default */
-  --bg: #09090b;
-  --surface: #101014;
-  --card: #18181b;
-  --border: rgba(255, 255, 255, 0.08);
-  --text-pri: #f4f4f5;
-  --text-outline: #ffffff;
-  --text-sec: #a1a1aa;
-  --text-mut: #71717a;
-  --accent: #10b981;
-  --accent-pale: rgba(16, 185, 129, 0.08);
-  --accent-text: #09090b;
+  /* Cyberpunk Dark Theme (Default) */
+  --bg: #060713;
+  --surface: #0d0e25;
+  --card: #131637;
+  --border: rgba(0, 240, 255, 0.16);
+  --text-pri: #f1f5f9;
+  --text-outline: #00f0ff;
+  --text-sec: #94a3b8;
+  --text-mut: #64748b;
+  --accent: #00f0ff;
+  --accent-pale: rgba(0, 240, 255, 0.08);
+  --accent-text: #060713;
+  --neon-pink: #ff007f;
+  --neon-pink-pale: rgba(255, 0, 127, 0.08);
   
   /* Semantic Status Colors */
-  --red: #ef4444;
-  --green: #10b981;
-  --amber: #f59e0b;
-  --blue: #3b82f6;
+  --red: #ff3b30;
+  --green: #34c759;
+  --amber: #ff9500;
+  --blue: #007aff;
   --amz: #ff9900;
   --flipkart: #2874f0;
   --meesho: #f43397;
 }
 
 [data-theme="light"] {
-  --bg: #fafafa;
+  /* Ambora Light Theme */
+  --bg: #f8fafc;
   --surface: #ffffff;
-  --card: #f4f4f5;
-  --border: rgba(0, 0, 0, 0.08);
-  --text-pri: #18181b;
-  --text-outline: #000000;
-  --text-sec: #52525b;
-  --text-mut: #a1a1aa;
-  --accent: #10b981;
-  --accent-pale: rgba(16, 185, 129, 0.1);
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --text-pri: #0f172a;
+  --text-outline: #7c3aed;
+  --text-sec: #475569;
+  --text-mut: #94a3b8;
+  --accent: #7c3aed;
+  --accent-pale: rgba(124, 58, 237, 0.08);
   --accent-text: #ffffff;
+  --neon-pink: #db2777;
+  --neon-pink-pale: rgba(219, 39, 119, 0.08);
 }
 
 @theme {

@@ -1,5 +1,6 @@
 // src/components/vyapar-os/Topbar.tsx
 import React from "react";
+import ThemeToggle from "../ThemeToggle";
 
 interface TopbarProps {
   onAskAI: () => void;
@@ -32,19 +33,19 @@ export const Topbar: React.FC<TopbarProps> = ({ onAskAI }) => {
       "November",
       "December",
     ];
-    return `${days[today.getDay()]}, ${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
+    return `${days[today.getDay()]} - ${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
   };
 
   return (
     <div
       style={{
-        height: "50px",
+        height: "56px",
         backgroundColor: "var(--surface)",
         borderBottom: "1px solid var(--border)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 20px",
+        padding: "0 24px",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -57,24 +58,29 @@ export const Topbar: React.FC<TopbarProps> = ({ onAskAI }) => {
         </span>
       </div>
 
-      <button
-        onClick={onAskAI}
-        style={{
-          backgroundColor: "var(--accent)",
-          color: "#0d0d0d",
-          border: "none",
-          borderRadius: "7px",
-          padding: "6px 14px",
-          fontSize: "12px",
-          fontWeight: 600,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-        }}
-      >
-        <span>💬</span> Ask Vyapar AI
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <ThemeToggle />
+        
+        <button
+          onClick={onAskAI}
+          style={{
+            backgroundColor: "var(--accent)",
+            color: "var(--accent-text)",
+            border: "none",
+            borderRadius: "7px",
+            padding: "8px 16px",
+            fontSize: "12px",
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <span>💬</span> Ask Vyapar AI
+        </button>
+      </div>
     </div>
   );
 };
