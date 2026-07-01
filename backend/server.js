@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import Groq from "groq-sdk";
 import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -703,6 +704,57 @@ async function sendWhatsAppMessage(toPhone, messageText) {
   }
 }
 
+// Download media binary from WhatsApp Cloud API
+async function downloadWhatsAppMedia(mediaId) {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error("WHATSAPP_ACCESS_TOKEN is missing.");
+  }
+
+  // 1. Get media URL metadata
+  const getUrl = `https://graph.facebook.com/v21.0/${mediaId}`;
+  const getRes = await fetch(getUrl, {
+    headers: { "Authorization": `Bearer ${accessToken}` }
+  });
+  if (!getRes.ok) {
+    const errorData = await getRes.json();
+    throw new Error(`Failed to get media details: ${JSON.stringify(errorData)}`);
+  }
+  const mediaData = await getRes.json();
+  const downloadUrl = mediaData.url;
+
+  // 2. Download binary media file
+  const downloadRes = await fetch(downloadUrl, {
+    headers: { "Authorization": `Bearer ${accessToken}` }
+  });
+  if (!downloadRes.ok) {
+    throw new Error(`Failed to download media file from ${downloadUrl}`);
+  }
+
+  const arrayBuffer = await downloadRes.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const tempDir = path.join(__dirname, "temp");
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  const filePath = path.join(tempDir, `${mediaId}.ogg`);
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
+
+// Transcribe audio using Groq Whisper API
+async function transcribeAudio(filePath) {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY is missing.");
+  }
+  const response = await groq.audio.transcriptions.create({
+    file: fs.createReadStream(filePath),
+    model: "whisper-large-v3"
+  });
+  return response.text;
+}
+
 // WhatsApp Message Ingestion Handler (POST)
 app.post("/api/whatsapp", async (req, res) => {
   const body = req.body;
@@ -713,9 +765,34 @@ app.post("/api/whatsapp", async (req, res) => {
     const msgType = messageInfo.type;
 
     if (msgType === "audio" || msgType === "voice" || messageInfo.audio || messageInfo.voice) {
-      console.log("[voice message received — transcription not yet wired]");
-      const voiceFallbackMessage = "Aapka voice message mila, par abhi voice transcription support nahi hai. Kripya type karke message bhejein!";
-      await sendWhatsAppMessage(fromPhone, voiceFallbackMessage);
+      try {
+        const audioInfo = messageInfo.audio || messageInfo.voice;
+        const mediaId = audioInfo.id;
+        console.log(`[voice message received] downloading media ID: ${mediaId}`);
+        
+        const filePath = await downloadWhatsAppMedia(mediaId);
+        console.log(`[voice message] downloaded to ${filePath}. Transcribing...`);
+        
+        const transcribedText = await transcribeAudio(filePath);
+        console.log(`[voice message] Transcribed text: "${transcribedText}"`);
+        
+        // Clean up temp file
+        try {
+          fs.unlinkSync(filePath);
+        } catch (err) {
+          console.error("Failed to delete temp audio file:", err);
+        }
+
+        if (!transcribedText || transcribedText.trim() === "") {
+          await sendWhatsAppMessage(fromPhone, "Aapka voice message empty tha ya clear nahi tha. Kripya fir se koshish karein.");
+        } else {
+          const result = await handleIncomingWhatsAppMessage(fromPhone, transcribedText);
+          await sendWhatsAppMessage(fromPhone, result.aiResponse);
+        }
+      } catch (error) {
+        console.error("Failed to process voice message:", error);
+        await sendWhatsAppMessage(fromPhone, `Voice message process karne me problem aayi: ${error.message}`);
+      }
     } else {
       const messageText = messageInfo.text?.body || "";
       const result = await handleIncomingWhatsAppMessage(fromPhone, messageText);
