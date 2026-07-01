@@ -71,7 +71,7 @@ export default function Sidebar({ activeTab, setActiveTab }: { activeTab: string
           </span>
           <div className="flex flex-col leading-none">
             <span className="text-[10px] text-text-pri font-bold uppercase tracking-wider text-stroke-xs">WhatsApp Live</span>
-            <span className="text-[9px] text-text-mut font-medium">+91 98765 43210</span>
+            <span className="text-[9px] text-text-mut font-medium">+91 89717 72472</span>
           </div>
         </div>
 

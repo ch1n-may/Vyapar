@@ -1,6 +1,7 @@
 // src/components/vyapar-os/LiveTicker.tsx
 import React, { useState, useEffect } from "react";
 import { sampleEvents } from "../../lib/vyapar-os/constants";
+import { getWsUrl } from "../../config";
 
 interface EventItem {
   type: string;
@@ -11,19 +12,82 @@ interface EventItem {
 
 export const LiveTicker: React.FC = () => {
   const [events, setEvents] = useState<EventItem[]>(sampleEvents);
+  const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Rotate list: take first item and move it to the end
-      setEvents((prev) => {
-        const copy = [...prev];
-        const first = copy.shift();
-        if (first) copy.push(first);
-        return copy;
-      });
-    }, 3000);
+    let ws: WebSocket | null = null;
+    let fallbackInterval: any = null;
 
-    return () => clearInterval(interval);
+    const startFallbackRotation = () => {
+      if (fallbackInterval) return;
+      fallbackInterval = setInterval(() => {
+        setEvents((prev) => {
+          const copy = [...prev];
+          const first = copy.shift();
+          if (first) copy.push(first);
+          return copy;
+        });
+      }, 4000);
+    };
+
+    const stopFallbackRotation = () => {
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
+    };
+
+    const connectWs = () => {
+      try {
+        ws = new WebSocket(getWsUrl());
+
+        ws.onopen = () => {
+          console.log("LiveTicker connected to activity WebSocket");
+          setWsConnected(true);
+          stopFallbackRotation();
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const newEvt = JSON.parse(event.data);
+            setEvents((prev) => {
+              // Prepend new event and limit to 10 items
+              const updated = [newEvt, ...prev];
+              if (updated.length > 10) {
+                updated.pop();
+              }
+              return updated;
+            });
+          } catch (e) {
+            console.error("Failed to parse socket event:", e);
+          }
+        };
+
+        ws.onclose = () => {
+          console.log("LiveTicker socket closed. Falling back to local rotation.");
+          setWsConnected(false);
+          startFallbackRotation();
+          // Retry connection after 5 seconds
+          setTimeout(connectWs, 5000);
+        };
+
+        ws.onerror = (err) => {
+          console.error("LiveTicker socket error:", err);
+          ws?.close();
+        };
+      } catch (err) {
+        console.error("Failed to construct socket connection:", err);
+        setWsConnected(false);
+        startFallbackRotation();
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      ws?.close();
+      stopFallbackRotation();
+    };
   }, []);
 
   const getDotColor = (type: string) => {
@@ -79,10 +143,11 @@ export const LiveTicker: React.FC = () => {
             width: "6px",
             height: "6px",
             borderRadius: "50%",
-            backgroundColor: "var(--accent)",
+            backgroundColor: wsConnected ? "var(--accent)" : "var(--amber)",
             display: "inline-block",
             animation: "pulse 1.5s infinite ease-in-out",
           }}
+          title={wsConnected ? "WebSocket Connected (Realtime updates)" : "Offline (Rotating mock data)"}
         />
         <style>{`
           @keyframes pulse {

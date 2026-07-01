@@ -5,9 +5,10 @@ import { navItems } from "../../lib/vyapar-os/constants";
 interface SidebarProps {
   activeSection: string;
   setActiveSection: (sec: string) => void;
+  onLogout?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeSection, setActiveSection }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeSection, setActiveSection, onLogout }) => {
   return (
     <div
       className="sidebar"
@@ -74,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeSection, setActiveSectio
             }}
           />
           <span style={{ fontSize: "10px", color: "var(--accent)", fontWeight: 500 }}>
-            WA Connected: +91 98765 43210
+            WA Connected: +91 89717 72472
           </span>
         </div>
 
@@ -176,13 +177,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeSection, setActiveSectio
 
         {/* User Info Row */}
         <div
+          onClick={onLogout}
           style={{
             display: "flex",
             alignItems: "center",
             gap: "10px",
             borderTop: "1px solid var(--border)",
             paddingTop: "12px",
+            cursor: onLogout ? "pointer" : "default"
           }}
+          title={onLogout ? "Click to lock dashboard" : ""}
         >
           <div
             style={{
@@ -201,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeSection, setActiveSectio
           >
             VD
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: "11.5px", fontWeight: 600, color: "var(--text-pri)" }}>
               Vijay Dukaandar
             </div>
@@ -209,6 +213,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeSection, setActiveSectio
               New Delhi, IN
             </div>
           </div>
+          {onLogout && (
+            <span style={{ fontSize: "12px", opacity: 0.6 }}>🔒</span>
+          )}
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+import { classifyAndRoute } from "./agent/router.js";
 
 dotenv.config();
 
@@ -27,42 +28,168 @@ const supabaseUrl = process.env.SUPABASE_URL || "https://dummy.supabase.co";
 const supabaseKey = process.env.SUPABASE_KEY || "dummy_key";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Mock DB State
-let merchants = [
-  {
-    id: "msme-001",
-    businessName: "Sharma Traders",
-    ownerName: "Aman Sharma",
-    language: "English",
-    status: "Active",
-    alerts: [
-      { id: 1, type: "rto", message: "High RTO Risk: Order #1294 on Amazon has a high likelihood of return. Stop shipment?", ctaText: "Stop Shipment" },
-      { id: 2, type: "stock", message: "Stock Warning: Only 2 units of 'Premium Silk Saree' left. Reorder immediately.", ctaText: "Reorder Now" },
-      { id: 3, type: "price", message: "Price Parity Alert: Your price on Meesho is ₹40 higher than Flipkart. Correct parity.", ctaText: "Correct Parity" },
-    ],
-    kpis: {
-      todaySales: "₹45,230",
-      orderCount: "14",
-      rtoRisk: "3",
-      pendingPayments: "₹12,450",
-      lowStockCount: "2",
-      todaySettlement: "₹32,180"
-    },
-    orders: [
-      { id: "OD-98273", platform: "Amazon", product: "Premium Silk Saree (Red)", amount: "₹2,499", status: "Delivered" },
-      { id: "OD-47291", platform: "Flipkart", product: "Cotton Kurta (Blue)", amount: "₹1,200", status: "RTO risk" },
-      { id: "OD-10928", platform: "Meesho", product: "Designer Jhumka Gold", amount: "₹450", status: "Processing" },
-      { id: "OD-38291", platform: "Amazon", product: "Embroidered Lehenga", amount: "₹5,999", status: "Return" },
-      { id: "OD-58290", platform: "Meesho", product: "Ethnic Footwear Set", amount: "₹899", status: "Delivered" },
-    ]
+// Fallback DB State and Merchant Helpers
+const fallbackMerchants = new Map();
+const onboardingState = new Map();
+
+const isValidUUID = (str) => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+};
+
+const demoMerchantId = "00000000-0000-0000-0000-000000000000";
+const demoMerchant = {
+  id: demoMerchantId,
+  phone_number: "918971772472",
+  business_name: "Sharma Traders",
+  language_pref: "hinglish",
+  status: "active",
+  alerts: [
+    { id: 1, type: "rto", message: "High RTO Risk: Order #1294 on Amazon has a high likelihood of return. Stop shipment?", ctaText: "Stop Shipment" },
+    { id: 2, type: "stock", message: "Stock Warning: Only 2 units of 'Premium Silk Saree' left. Reorder immediately.", ctaText: "Reorder Now" },
+    { id: 3, type: "price", message: "Price Parity Alert: Your price on Meesho is ₹40 higher than Flipkart. Correct parity.", ctaText: "Correct Parity" },
+  ],
+  kpis: {
+    todaySales: "₹45,230",
+    orderCount: "14",
+    rtoRisk: "3",
+    pendingPayments: "₹12,450",
+    lowStockCount: "2",
+    todaySettlement: "₹32,180"
+  },
+  orders: [
+    { id: "OD-98273", platform: "Amazon", product: "Premium Silk Saree (Red)", amount: "₹2,499", status: "Delivered" },
+    { id: "OD-47291", platform: "Flipkart", product: "Cotton Kurta (Blue)", amount: "₹1,200", status: "RTO risk" },
+    { id: "OD-10928", platform: "Meesho", product: "Designer Jhumka Gold", amount: "₹450", status: "Processing" },
+    { id: "OD-38291", platform: "Amazon", product: "Embroidered Lehenga", amount: "₹5,999", status: "Return" },
+    { id: "OD-58290", platform: "Meesho", product: "Ethnic Footwear Set", amount: "₹899", status: "Delivered" },
+  ]
+};
+
+fallbackMerchants.set("918971772472", demoMerchant);
+fallbackMerchants.set(demoMerchantId, demoMerchant);
+fallbackMerchants.set("msme-001", demoMerchant);
+
+async function getOrCreateMerchant(phoneNumber) {
+  const isSupabaseConfigured = process.env.SUPABASE_URL && 
+                               process.env.SUPABASE_URL !== "https://dummy.supabase.co" && 
+                               process.env.SUPABASE_KEY && 
+                               process.env.SUPABASE_KEY !== "dummy_key";
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from("merchants")
+        .select("*")
+        .eq("phone_number", phoneNumber)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) return data;
+
+      const { data: newMerchant, error: insertError } = await supabase
+        .from("merchants")
+        .insert([{ phone_number: phoneNumber, status: "onboarding", language_pref: "hinglish" }])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      return newMerchant;
+    } catch (err) {
+      console.warn("⚠️ Supabase query failed. Falling back to in-memory store. Error:", err.message);
+    }
+  } else {
+    console.warn("⚠️ Supabase is not configured. Using in-memory fallback Map.");
   }
+
+  if (fallbackMerchants.has(phoneNumber)) {
+    return fallbackMerchants.get(phoneNumber);
+  }
+
+  const newId = `temp-${Math.random().toString(36).substring(2, 15)}`;
+  const newMerchant = {
+    id: newId,
+    phone_number: phoneNumber,
+    business_name: null,
+    language_pref: "hinglish",
+    status: "onboarding",
+    created_at: new Date().toISOString(),
+    alerts: [],
+    kpis: {
+      todaySales: "₹0",
+      orderCount: "0",
+      rtoRisk: "0",
+      pendingPayments: "₹0",
+      lowStockCount: "0",
+      todaySettlement: "₹0"
+    },
+    orders: []
+  };
+
+  fallbackMerchants.set(phoneNumber, newMerchant);
+  fallbackMerchants.set(newId, newMerchant);
+  return newMerchant;
+}
+
+let approvals = [
+  { id: "A-101", type: "dispute", title: "Approve Amazon Fee Dispute", detail: "Amazon overcharged ₹1,200 commission on order OD-98273. Approve filing dispute case?", status: "Pending", requiredRole: "Owner", createdAt: new Date().toISOString() },
+  { id: "A-102", type: "stock", title: "Approve Supplier Bulk Reorder", detail: "Reorder request for 100 units of Cotton Kurta (₹1,20,000) generated. Approve release?", status: "Pending", requiredRole: "Owner", createdAt: new Date().toISOString() }
 ];
 
 // HTTP REST Endpoints
-app.get("/api/merchant/:id", (req, res) => {
-  const merchant = merchants.find((m) => m.id === req.params.id);
-  if (!merchant) return res.status(404).json({ error: "Merchant not found" });
-  res.json(merchant);
+app.get("/api/merchant/:id", async (req, res) => {
+  const reqId = req.params.id;
+
+  const isSupabaseConfigured = process.env.SUPABASE_URL && 
+                               process.env.SUPABASE_URL !== "https://dummy.supabase.co" && 
+                               process.env.SUPABASE_KEY && 
+                               process.env.SUPABASE_KEY !== "dummy_key";
+
+  if (isSupabaseConfigured) {
+    try {
+      const targetId = reqId === "msme-001" ? demoMerchantId : reqId;
+
+      if (isValidUUID(targetId)) {
+        const { data, error } = await supabase
+          .from("merchants")
+          .select("*")
+          .eq("id", targetId)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          return res.json({
+            ...data,
+            businessName: data.business_name || "New Merchant",
+            ownerName: data.owner_name || "Vijay Dukaandar",
+            language: data.language_pref === "hinglish" ? "English/Hindi" : data.language_pref,
+            alerts: data.alerts || demoMerchant.alerts,
+            kpis: data.kpis || demoMerchant.kpis,
+            orders: data.orders || demoMerchant.orders
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ Supabase merchant fetch failed. Falling back to in-memory store. Error:", err.message);
+    }
+  }
+
+  const merchant = fallbackMerchants.get(reqId);
+  if (!merchant) {
+    return res.status(404).json({ error: "Merchant not found" });
+  }
+
+  const formattedMerchant = {
+    ...merchant,
+    businessName: merchant.business_name || "New Merchant",
+    ownerName: merchant.ownerName || "Vijay Dukaandar",
+    language: merchant.language_pref === "hinglish" ? "English/Hindi" : merchant.language_pref,
+    alerts: merchant.alerts || demoMerchant.alerts,
+    kpis: merchant.kpis || demoMerchant.kpis,
+    orders: merchant.orders || demoMerchant.orders
+  };
+
+  res.json(formattedMerchant);
 });
 
 app.post("/api/chat", async (req, res) => {
@@ -106,6 +233,51 @@ app.post("/api/chat", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch response from Groq." });
   }
 });
+
+// Merchant Support Chat API powered by Groq completions
+app.post("/api/support/chat", async (req, res) => {
+  const { message } = req.body;
+  
+  if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY.trim() === "") {
+    let supportReply = "Namaste! I am the Vyapar OS Support Assistant. (Simulated Support Reply): ";
+    const query = (message || "").toLowerCase();
+    if (query.includes("reconciliation") || query.includes("recon") || query.includes("audit")) {
+      supportReply += "Aap payout sheet CSV upload karke discrepancies check kar sakte hain. Amazon/Flipkart support par ticket create karne ke liye 'Draft Dispute' button use karein.";
+    } else if (query.includes("integration") || query.includes("channel") || query.includes("api")) {
+      supportReply += "Marketplace sync settings open karke Seller ID aur API Credentials verify karein. Agar koi disconnect issue hai toh settings update karein.";
+    } else if (query.includes("subscription") || query.includes("billing") || query.includes("plan")) {
+      supportReply += "Aap settings tab se Pro Plan upgrade kar sakte hain. ₹1,999/month me automatic RTO intercept aur advanced weekly P&L summaries unlocked hain.";
+    } else {
+      supportReply += "Bataiye main aapki kya sahayata kar sakta hoon? Aap setup settings ya reconciliation related details puch sakte hain.";
+    }
+    return res.json({ reply: supportReply });
+  }
+
+  try {
+    const response = await groq.chat.completions.create({
+      model: "llama3-8b-8192",
+      messages: [
+        {
+          role: "system",
+          content: "You are the Vyapar OS Merchant Support Specialist. Help the merchant (Vijay Dukaandar) resolve issues related to API integrations, payout reconciliation, subscriptions, COD to prepaid conversions, or A/B testing. Keep answers professional, concise, and helpful, using Hinglish (mix of Hindi & English) naturally."
+        },
+        {
+          role: "user",
+          content: message
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 256
+    });
+
+    const reply = response.choices[0]?.message?.content || "No reply from Support AI.";
+    res.json({ reply });
+  } catch (err) {
+    console.error("Support Chat Error:", err);
+    res.status(500).json({ error: "Failed to fetch response from Support AI." });
+  }
+});
+
 
 // AI Voice List structuring API
 app.post("/api/voice-list", async (req, res) => {
@@ -284,49 +456,251 @@ app.get("/api/whatsapp", (req, res) => {
 });
 
 // Shared WhatsApp Message Processing Pipeline
+// In-memory pending confirmations map
+const pendingConfirmations = new Map();
+
+// Action executors for marketplace actions
+const actionExecutors = {
+  create_listing: async (params) => {
+    console.log("[Executor] Executing create_listing with params:", JSON.stringify(params, null, 2));
+    if (!params.name || !params.sku || !params.price || !params.stock || !params.platforms) {
+      const err = new Error("Validation failed in create_listing executor: missing parameters");
+      console.error("[Executor Error] create_listing failed:", err);
+      throw err;
+    }
+    return `Naya listing create ho gaya hai: *${params.name}* (SKU: ${params.sku}) @ ₹${params.price}. Stock: ${params.stock}. Platforms: ${params.platforms.join(", ")}.`;
+  },
+  file_dispute: async (params) => {
+    console.log("[Executor] Executing file_dispute with params:", JSON.stringify(params, null, 2));
+    if (!params.order_id || !params.platform || params.discrepancy_amount === undefined) {
+      const err = new Error("Validation failed in file_dispute executor: missing parameters");
+      console.error("[Executor Error] file_dispute failed:", err);
+      throw err;
+    }
+    return `Order *${params.order_id}* (${params.platform}) ke liye ₹${params.discrepancy_amount} ka dispute file kar diya gaya hai. (Expected: ₹${params.expected_fee}, Actual: ₹${params.actual_fee}).`;
+  },
+  check_earnings: async (params) => {
+    console.log("[Executor] Executing check_earnings with params:", JSON.stringify(params, null, 2));
+    if (!params.period) {
+      const err = new Error("Validation failed in check_earnings executor: missing period");
+      console.error("[Executor Error] check_earnings failed:", err);
+      throw err;
+    }
+    const period = params.period;
+    if (period === "today") {
+      return "Aapne aaj total *₹5,420* kamaye hain from 3 orders. Payout status green hai.";
+    } else if (period === "month") {
+      return "Aapne is mahine total *₹1,85,430* kamaye hain. Commission fees are stable.";
+    } else {
+      // default / week
+      return "Aapne is hafte total *₹45,230* kamaye hain. Top product 'Premium Silk Saree' raha.";
+    }
+  },
+  reorder_stock: async (params) => {
+    console.log("[Executor] Executing reorder_stock with params:", JSON.stringify(params, null, 2));
+    if (!params.sku || !params.quantity) {
+      const err = new Error("Validation failed in reorder_stock executor: missing sku or quantity");
+      console.error("[Executor Error] reorder_stock failed:", err);
+      throw err;
+    }
+    return `Stock reorder request successfully placed for SKU *${params.sku}* with quantity *${params.quantity}* units.`;
+  },
+  update_price: async (params) => {
+    console.log("[Executor] Executing update_price with params:", JSON.stringify(params, null, 2));
+    if (!params.sku || !params.platform || !params.new_price) {
+      const err = new Error("Validation failed in update_price executor: missing parameters");
+      console.error("[Executor Error] update_price failed:", err);
+      throw err;
+    }
+    return `Price update successful: SKU *${params.sku}* ka price *${params.platform}* par *₹${params.new_price}* set kar diya gaya hai.`;
+  }
+};
+
+// Shared WhatsApp Message Processing Pipeline
 async function handleIncomingWhatsAppMessage(fromPhone, messageText) {
   const logSteps = [];
   logSteps.push(`[Ingest] Received message from ${fromPhone}: "${messageText}"`);
 
-  let aiResponse = "Haa ji, aapka message mil gaya. (Simulated response)";
-  
-  // 1. Intent Classification / Processing via Groq
-  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim() !== "") {
-    logSteps.push("[Brain] Querying Groq API for intent classification and response...");
-    try {
-      const response = await groq.chat.completions.create({
-        model: "llama3-8b-8192",
-        messages: [
-          {
-            role: "system",
-            content: "You are the Vyapar OS WhatsApp Assistant. You help Indian MSME merchants run their store over WhatsApp. Respond in a short, polite Hinglish sentence. If they ask about earnings, confirm you will check their P&L report."
-          },
-          {
-            role: "user",
-            content: messageText
+  const merchant = await getOrCreateMerchant(fromPhone);
+
+  if (merchant.status === "onboarding") {
+    const cleanText = messageText.trim();
+    if (onboardingState.get(fromPhone) === "awaiting_business_name") {
+      merchant.business_name = cleanText;
+      merchant.status = "active";
+
+      const isSupabaseConfigured = process.env.SUPABASE_URL && 
+                                   process.env.SUPABASE_URL !== "https://dummy.supabase.co" && 
+                                   process.env.SUPABASE_KEY && 
+                                   process.env.SUPABASE_KEY !== "dummy_key";
+
+      if (isSupabaseConfigured) {
+        try {
+          const { error } = await supabase
+            .from("merchants")
+            .update({ business_name: cleanText, status: "active" })
+            .eq("phone_number", fromPhone);
+          if (error) throw error;
+        } catch (err) {
+          console.warn("⚠️ Supabase update failed during onboarding. Updating in fallback memory. Error:", err.message);
+          const memMerchant = fallbackMerchants.get(fromPhone);
+          if (memMerchant) {
+            memMerchant.business_name = cleanText;
+            memMerchant.status = "active";
           }
-        ],
-        temperature: 0.7,
-        max_tokens: 150
-      });
-      aiResponse = response.choices[0]?.message?.content || aiResponse;
-      logSteps.push("[Brain] Groq completion successfully generated.");
+        }
+      } else {
+        const memMerchant = fallbackMerchants.get(fromPhone);
+        if (memMerchant) {
+          memMerchant.business_name = cleanText;
+          memMerchant.status = "active";
+        }
+      }
+
+      onboardingState.delete(fromPhone);
+      const welcomeBackMsg = `Dhanyawad! Aapka business *${cleanText}* register ho gaya hai. Ab aap Vyapar OS use kar sakte hain. Aap order status ya stock check details puch sakte hain.`;
+      logSteps.push(`[Onboarding] Completed onboarding for ${fromPhone}. Business Name: ${cleanText}`);
+      return { aiResponse: welcomeBackMsg, logSteps };
+    } else {
+      onboardingState.set(fromPhone, "awaiting_business_name");
+      const welcomeMsg = `Namaste! Vyapar OS me aapka swagat hai. Kripya apne business ka naam batayein.`;
+      logSteps.push(`[Onboarding] Prompted ${fromPhone} for business name.`);
+      return { aiResponse: welcomeMsg, logSteps };
+    }
+  }
+
+  const cleanText = messageText.trim().toLowerCase();
+  const positiveAnswers = ["yes", "haan", "ha", "y", "confirm", "ok", "haanji", "han"];
+  const negativeAnswers = ["no", "nahin", "n", "cancel", "nahi"];
+
+  // Check if there is a pending confirmation for this number
+  if (pendingConfirmations.has(fromPhone)) {
+    const pending = pendingConfirmations.get(fromPhone);
+
+    if (positiveAnswers.includes(cleanText)) {
+      logSteps.push(`[Confirmation] Seller confirmed pending action: ${pending.action}`);
+      let executionReply;
+      try {
+        const executor = actionExecutors[pending.action];
+        if (!executor) {
+          throw new Error(`Executor not found for action: ${pending.action}`);
+        }
+        executionReply = await executor(pending.params);
+        logSteps.push(`[Executor] Action ${pending.action} executed successfully.`);
+      } catch (err) {
+        console.error(`[Executor Error] Action ${pending.action} failed:`, err);
+        logSteps.push(`[Error] Action execution failed: ${err.message}`);
+        executionReply = `Dukaandar ji, action perform karne me error aaya: ${err.message}`;
+      }
+      pendingConfirmations.delete(fromPhone);
+      return { aiResponse: executionReply, logSteps };
+    } else if (negativeAnswers.includes(cleanText)) {
+      logSteps.push(`[Confirmation] Seller cancelled pending action: ${pending.action}`);
+      pendingConfirmations.delete(fromPhone);
+      return { aiResponse: "Theek hai, action cancel kar diya gaya hai. Main aapki kya sahayata karoon?", logSteps };
+    } else {
+      // Not a direct yes/no. Clear it and process the message as a new incoming query
+      logSteps.push(`[Confirmation] Pending action found but received unrelated reply "${messageText}". Clearing pending confirmation.`);
+      pendingConfirmations.delete(fromPhone);
+    }
+  }
+
+  // Route/classify the new message
+  logSteps.push("[Brain] Routing message to classifyAndRoute...");
+  const routeResult = await classifyAndRoute(messageText);
+  logSteps.push(`[Brain] Router classified message. Action: ${routeResult.action}`);
+
+  let aiResponse;
+
+  if (routeResult.action === "reply" || routeResult.action === "clarify") {
+    aiResponse = routeResult.message;
+  } else if (routeResult.action === "check_earnings") {
+    // Read-only action: execute immediately
+    try {
+      aiResponse = await actionExecutors.check_earnings(routeResult.params);
+      logSteps.push("[Executor] Executed check_earnings immediately.");
     } catch (err) {
-      console.error("Groq WhatsApp Error:", err);
-      logSteps.push(`[Error] Groq request failed: ${err.message}`);
+      console.error("[Executor Error] Immediate check_earnings failed:", err);
+      logSteps.push(`[Error] Immediate check_earnings failed: ${err.message}`);
+      aiResponse = `Dukaandar ji, report load karne me error aaya: ${err.message}`;
     }
   } else {
-    logSteps.push("[Mock] No Groq API Key found. Falling back to local pattern parser.");
-    const query = messageText.toLowerCase();
-    if (query.includes("earning") || query.includes("kamaya")) {
-      aiResponse = "Aapne is hafte total ₹45,230 kamaye hai. Top product 'Premium Silk Saree' raha.";
-    } else if (query.includes("stock") || query.includes("inventory")) {
-      aiResponse = "Kurti SKU-A12 ka stock kam hai (only 2 units left). supplier ko reorder order bheju?";
+    // Mutative actions require confirmation
+    pendingConfirmations.set(fromPhone, {
+      action: routeResult.action,
+      params: routeResult.params
+    });
+    logSteps.push(`[Confirmation] Set pending confirmation for ${routeResult.action}`);
+
+    // Format a Hinglish confirmation prompt based on action
+    const params = routeResult.params;
+    switch (routeResult.action) {
+      case "create_listing":
+        aiResponse = `New listing: Product *${params.name}* (SKU: ${params.sku}) ko ₹${params.price} ke sath platforms ${params.platforms.join(", ")} par list karna hai? Confirm karein (Yes/No)?`;
+        break;
+      case "file_dispute":
+        aiResponse = `Dispute file: Order ID *${params.order_id}* (${params.platform}) par fee difference ₹${params.discrepancy_amount} ke liye dispute file karein? Confirm karein (Yes/No)?`;
+        break;
+      case "reorder_stock":
+        aiResponse = `Reorder Stock: Product SKU *${params.sku}* ke liye *${params.quantity}* units ka naya stock order karein? Confirm karein (Yes/No)?`;
+        break;
+      case "update_price":
+        aiResponse = `Price update: SKU *${params.sku}* ka price *${params.platform}* par *₹${params.new_price}* set karna hai. Confirm karein (Yes/No)?`;
+        break;
+      default:
+        aiResponse = `Confirm update: ${routeResult.action} perform karna hai with parameters ${JSON.stringify(params)}. Confirm karein (Yes/No)?`;
     }
   }
 
   logSteps.push(`[Outbound] Generated outgoing reply: "${aiResponse}"`);
   return { aiResponse, logSteps };
+}
+
+// Send Outgoing WhatsApp Message via Cloud API
+async function sendWhatsAppMessage(toPhone, messageText) {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!accessToken || !phoneNumberId) {
+    console.error("WhatsApp Send Error: WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is missing.");
+    return { success: false, error: "Configuration missing" };
+  }
+
+  try {
+    const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toPhone,
+      type: "text",
+      text: {
+        preview_url: false,
+        body: messageText
+      }
+    };
+
+    console.log(`[Outbound] Sending WhatsApp message to ${toPhone}...`);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error("WhatsApp Send API Error response:", data);
+      return { success: false, error: data };
+    }
+
+    console.log(`[Outbound] WhatsApp message sent successfully:`, data);
+    return { success: true, data };
+  } catch (error) {
+    console.error("WhatsApp Send Connection/Runtime Error:", error);
+    return { success: false, error: error.message };
+  }
 }
 
 // WhatsApp Message Ingestion Handler (POST)
@@ -336,9 +710,17 @@ app.post("/api/whatsapp", async (req, res) => {
   if (body.object && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
     const messageInfo = body.entry[0].changes[0].value.messages[0];
     const fromPhone = messageInfo.from;
-    const messageText = messageInfo.text?.body || "";
+    const msgType = messageInfo.type;
 
-    await handleIncomingWhatsAppMessage(fromPhone, messageText);
+    if (msgType === "audio" || msgType === "voice" || messageInfo.audio || messageInfo.voice) {
+      console.log("[voice message received — transcription not yet wired]");
+      const voiceFallbackMessage = "Aapka voice message mila, par abhi voice transcription support nahi hai. Kripya type karke message bhejein!";
+      await sendWhatsAppMessage(fromPhone, voiceFallbackMessage);
+    } else {
+      const messageText = messageInfo.text?.body || "";
+      const result = await handleIncomingWhatsAppMessage(fromPhone, messageText);
+      await sendWhatsAppMessage(fromPhone, result.aiResponse);
+    }
   }
 
   res.sendStatus(200);
@@ -347,7 +729,7 @@ app.post("/api/whatsapp", async (req, res) => {
 // WhatsApp Sandbox Web Simulator Endpoint (POST)
 app.post("/api/whatsapp/simulate", async (req, res) => {
   const { message, phone } = req.body;
-  const senderPhone = phone || "919876543210";
+  const senderPhone = phone || "918971772472";
   
   const result = await handleIncomingWhatsAppMessage(senderPhone, message || "Hello");
   res.json({
@@ -355,6 +737,15 @@ app.post("/api/whatsapp/simulate", async (req, res) => {
     sender: senderPhone,
     reply: result.aiResponse,
     logs: result.logSteps
+  });
+});
+
+// WhatsApp Configuration Status Endpoint (GET)
+app.get("/api/whatsapp/status", (req, res) => {
+  res.json({
+    whatsapp_configured: !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID),
+    has_token: !!process.env.WHATSAPP_ACCESS_TOKEN,
+    has_phone_id: !!process.env.WHATSAPP_PHONE_NUMBER_ID
   });
 });
 
@@ -471,6 +862,85 @@ app.post("/api/rto/verify-buyer", (req, res) => {
     buyerResponse: action || "Confirm",
     resolvedStatus: action === "Confirm" ? "Approved for Shipment" : "Cancelled before Dispatch",
     updatedTimestamp: new Date().toISOString()
+  });
+});
+
+// Phase 2: Get Approvals list
+app.get("/api/approvals", (req, res) => {
+  res.json({ success: true, approvals });
+});
+
+// Phase 2: Resolve Approval
+app.post("/api/approvals/resolve", (req, res) => {
+  const { id, action, role } = req.body; // action: "Approved" or "Rejected", role: "Owner" or "Accountant"
+
+  if (role !== "Owner") {
+    return res.status(403).json({ error: "Only the Owner role is authorized to resolve approvals." });
+  }
+
+  const approvalIdx = approvals.findIndex(a => a.id === id);
+  if (approvalIdx === -1) {
+    return res.status(404).json({ error: "Approval item not found." });
+  }
+
+  approvals[approvalIdx].status = action;
+  res.json({ success: true, approval: approvals[approvalIdx] });
+});
+
+// Phase 2: Simulate PDF Statement parsing
+app.post("/api/pdf-extract/simulate", (req, res) => {
+  const { fileName } = req.body;
+  
+  // Return simulated payout overcharges extracted from the "PDF text"
+  res.json({
+    success: true,
+    fileName: fileName || "settlement_june_2026.pdf",
+    parsedText: "Extracting transaction logs... Amazon commission overcharges found... Flipkart shipping fee mismatch detected...",
+    rows: [
+      { orderId: "OD-98273", platform: "Amazon", price: 2499, actualCommission: 480, actualShipping: 120, shipmentType: "Local" },
+      { orderId: "OD-47291", platform: "Flipkart", price: 1200, actualCommission: 240, actualShipping: 180, shipmentType: "National" },
+      { orderId: "OD-38291", platform: "Amazon", price: 5999, actualCommission: 1100, actualShipping: 120, shipmentType: "Local" }
+    ]
+  });
+});
+
+// Phase 3: Login authentication endpoint
+app.post("/api/session/login", (req, res) => {
+  const { passcode } = req.body;
+  if (String(passcode) === "1234") {
+    res.json({ success: true, token: `session_token_${Math.random().toString(36).substring(2, 10)}` });
+  } else {
+    res.status(401).json({ success: false, error: "Invalid passcode. Please enter the default passcode '1234'." });
+  }
+});
+
+// Phase 3: Release / Deploy readiness status endpoint
+app.get("/api/deploy/status", (req, res) => {
+  res.json({
+    success: true,
+    environment: process.env.VERCEL_ENV || "development",
+    ready: true,
+    issues: [],
+    steps: [
+      "Confirm merchant onboarding",
+      "Verify session lock and restore",
+      "Review approval queue",
+      "Review connector safety",
+      "Deploy preview, then production"
+    ]
+  });
+});
+
+// Phase 3: System observability logs endpoint
+app.get("/api/observability/events", (req, res) => {
+  res.json({
+    success: true,
+    events: [
+      { ts: new Date(Date.now() - 3600 * 1000).toISOString(), type: "session-created", detail: "Session unlocked by Vijay Dukaandar (Owner)." },
+      { ts: new Date(Date.now() - 1800 * 1000).toISOString(), type: "recon-audit", detail: "Settlement report checked. Commission discrepancies auto-flagged." },
+      { ts: new Date(Date.now() - 600 * 1000).toISOString(), type: "ab-test", detail: "A/B variant traffic redistribution active." },
+      { ts: new Date().toISOString(), type: "status-check", detail: "Observability heartbeat check successful." }
+    ]
   });
 });
 

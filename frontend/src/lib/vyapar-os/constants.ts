@@ -29,6 +29,7 @@ export const navItems = [
   { section: "Emails", label: "WhatsApp & Emails", icon: "💬" },
   { section: "ABTesting", label: "A/B Testing", icon: "🧪" },
   { section: "Integrations", label: "Integrations", icon: "🔌" },
+  { section: "Status", label: "System Status", icon: "🛠️" },
 ];
 
 export const platforms = [

@@ -9,6 +9,7 @@ import { OrdersTable } from "./OrdersTable";
 import { LiveTicker } from "./LiveTicker";
 import { AIChat } from "./AIChat";
 import { StatusPill } from "./StatusPill";
+import { LockScreen } from "./LockScreen";
 import { getApiUrl } from "../../config";
 
 export const Dashboard: React.FC = () => {
@@ -66,6 +67,54 @@ export const Dashboard: React.FC = () => {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
 
+  // A/B Testing state
+  const [abTests, setAbTests] = useState<any[]>([
+    { id: "ab-001", name: "COD Switch Discount Value", variantA: "₹50 Flat", variantB: "10% Flat", trafficSplit: 50, status: "Running", conversionsA: 42, conversionsB: 58, ordersA: 340, ordersB: 350, rtoA: 28, rtoB: 12 },
+    { id: "ab-002", name: "Checkout Form Complexity", variantA: "Single Page Form", variantB: "3-Step Wizard", trafficSplit: 50, status: "Paused", conversionsA: 89, conversionsB: 71, ordersA: 500, ordersB: 495, rtoA: 45, rtoB: 42 }
+  ]);
+  const [newTestModalOpen, setNewTestModalOpen] = useState(false);
+  const [newTestName, setNewTestName] = useState("");
+  const [newTestVarA, setNewTestVarA] = useState("");
+  const [newTestVarB, setNewTestVarB] = useState("");
+  const [newTestSplit, setNewTestSplit] = useState(50);
+
+  // Smart Pricing & Promotions state
+  const [discountActive, setDiscountActive] = useState(true);
+  const [discountType, setDiscountType] = useState<"flat" | "percent">("flat");
+  const [discountValue, setDiscountValue] = useState(50);
+  const [minOrderValue, setMinOrderValue] = useState(500);
+  const [selectedCodOrderId, setSelectedCodOrderId] = useState<string>("OD-47291");
+  const [whatsappSimStep, setWhatsappSimStep] = useState(0); // 0: Idle, 1: Offer Sent, 2: Accepted (Converted), 3: Declined
+
+  // Integration Config State
+  const [integrationModalOpen, setIntegrationModalOpen] = useState(false);
+  const [activeConfigIntegration, setActiveConfigIntegration] = useState<any>(null);
+  const [sellerId, setSellerId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [syncInterval, setSyncInterval] = useState("30");
+
+  // Support Chat State
+  const [supportMessages, setSupportMessages] = useState<any[]>([
+    { from: "agent", text: "Namaste Vijay ji! I am your Vyapar OS Merchant Support Assistant. Setup, billing, ya reconciliation related koi query hai?", time: "Just now" }
+  ]);
+  const [supportInput, setSupportInput] = useState("");
+  const [isSupportTyping, setIsSupportTyping] = useState(false);
+
+  // Analytics Filter state
+  const [analyticsTimeframe, setAnalyticsTimeframe] = useState<"Today" | "Weekly" | "Monthly" | "YTD">("Today");
+
+
+  // Lockscreen & Session state
+  const [isUnlocked, setIsUnlocked] = useState(!!localStorage.getItem("vyapar_session"));
+
+  // Observability & System Status state
+  const [deployStatus, setDeployStatus] = useState<any>(null);
+  const [systemEvents, setSystemEvents] = useState<any[]>([]);
+
+  // Role & Approvals State
+  const [userRole, setUserRole] = useState<"Owner" | "Accountant">("Owner");
+  const [approvals, setApprovals] = useState<any[]>([]);
+
   useEffect(() => {
     fetch(getApiUrl("/api/merchant/msme-001"))
       .then((res) => res.json())
@@ -78,6 +127,27 @@ export const Dashboard: React.FC = () => {
         if (data.success) setWeeklyPulse(data.report);
       })
       .catch((err) => console.error("Error fetching P&L report:", err));
+
+    fetch(getApiUrl("/api/approvals"))
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setApprovals(data.approvals);
+      })
+      .catch((err) => console.error("Error fetching approvals:", err));
+
+    fetch(getApiUrl("/api/deploy/status"))
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setDeployStatus(data);
+      })
+      .catch((err) => console.error("Error fetching deploy status:", err));
+
+    fetch(getApiUrl("/api/observability/events"))
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setSystemEvents(data.events);
+      })
+      .catch((err) => console.error("Error fetching observability events:", err));
   }, []);
 
   const handleAskAI = () => {
@@ -166,6 +236,39 @@ export const Dashboard: React.FC = () => {
     if (!file) return;
 
     setIsReconRunning(true);
+
+    if (file.name.toLowerCase().endsWith(".pdf")) {
+      fetch(getApiUrl("/api/pdf-extract/simulate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name })
+      })
+        .then(res => res.json())
+        .then(pdfData => {
+          if (pdfData.success && pdfData.rows) {
+            return fetch(getApiUrl("/api/recon/upload"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ rows: pdfData.rows, merchantId: "msme-001" })
+            });
+          } else {
+            throw new Error("Failed to parse PDF statement.");
+          }
+        })
+        .then(res => res.json())
+        .then(data => {
+          setIsReconRunning(false);
+          setReconResult(data);
+          alert(`PDF Statement Ingest Complete!\nProcessed: ${data.totalProcessed} orders.\nDiscrepancies found: ${data.discrepancyCount} overcharges.\nTotal overcharges recovered: ₹${data.totalOvercharged}`);
+        })
+        .catch(err => {
+          setIsReconRunning(false);
+          console.error("PDF Ingest error:", err);
+          alert("Failed to complete PDF statement reconciliation.");
+        });
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
@@ -248,7 +351,7 @@ export const Dashboard: React.FC = () => {
     fetch(getApiUrl("/api/whatsapp/simulate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: simulatorInput, phone: "919876543210" })
+      body: JSON.stringify({ message: simulatorInput, phone: "918971772472" })
     })
       .then(res => res.json())
       .then(data => {
@@ -269,6 +372,32 @@ export const Dashboard: React.FC = () => {
 
   const exportTallyCSV = () => {
     alert("Generating bookkeeping CSV...\nCSV export generated successfully. Download started for 'Vyapar_Tally_Bridge_30_June.csv'.");
+  };
+
+  const handleResolveApproval = (id: string, action: "Approved" | "Rejected") => {
+    fetch(getApiUrl("/api/approvals/resolve"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action, role: userRole })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: action } : a));
+          alert(`Approval status updated: ${action}`);
+        } else {
+          alert(`Error: ${data.error}`);
+        }
+      })
+      .catch(err => {
+        console.error("Resolve approval error:", err);
+        alert("Failed to resolve approval item on the server.");
+      });
+  };
+
+  const handleLogout = () => {
+    setIsUnlocked(false);
+    localStorage.removeItem("vyapar_session");
   };
 
   // Render sub-sections
@@ -318,6 +447,70 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Role-based Approval Queue */}
+          <div className="glass-panel" style={{ padding: "16px", borderRadius: "10px", marginTop: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>👑</span> Role-based Approval Queue
+              </div>
+              <span style={{ fontSize: "10px", padding: "2px 6px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: "4px", color: "var(--text-sec)" }}>
+                Active Role: {userRole}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {approvals.length === 0 ? (
+                <div style={{ fontSize: "11px", color: "var(--text-mut)", textAlign: "center", padding: "10px" }}>
+                  No approvals in queue.
+                </div>
+              ) : (
+                approvals.map((appr) => (
+                  <div key={appr.id} style={{ padding: "10px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>{appr.title}</span>
+                      <span style={{
+                        fontSize: "9.5px",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        fontWeight: 600,
+                        background: appr.status === "Pending" ? "rgba(245, 158, 11, 0.1)" : appr.status === "Approved" ? "var(--accent-pale)" : "rgba(239, 68, 68, 0.15)",
+                        color: appr.status === "Pending" ? "var(--amber)" : appr.status === "Approved" ? "var(--accent)" : "var(--red)"
+                      }}>
+                        {appr.status}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "11px", color: "var(--text-sec)", margin: 0 }}>{appr.detail}</p>
+                    
+                    {appr.status === "Pending" && (
+                      <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                        {userRole === "Owner" ? (
+                          <>
+                            <button
+                              onClick={() => handleResolveApproval(appr.id, "Approved")}
+                              style={{ padding: "4px 8px", fontSize: "10.5px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 600 }}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleResolveApproval(appr.id, "Rejected")}
+                              style={{ padding: "4px 8px", fontSize: "10.5px", background: "transparent", border: "1px solid var(--red)", color: "var(--red)", borderRadius: "4px", cursor: "pointer" }}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: "10.5px", color: "var(--amber)", fontStyle: "italic" }}>
+                            🔒 Owner approval required (Read-Only for Accountant)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <div className="glass-panel" style={{ padding: "16px", borderRadius: "10px", display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -344,7 +537,7 @@ export const Dashboard: React.FC = () => {
               display: "block"
             }}>
               {isReconRunning ? "Calculating Slabs..." : "📁 Upload Settlement File"}
-              <input type="file" accept=".csv" onChange={handleCsvUpload} style={{ display: "none" }} disabled={isReconRunning} />
+              <input type="file" accept=".csv,.pdf" onChange={handleCsvUpload} style={{ display: "none" }} disabled={isReconRunning} />
             </label>
             {reconResult && (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
@@ -618,62 +811,376 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 
-  const renderAnalytics = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Realtime Store Analytics</h2>
+  const renderAnalytics = () => {
+    // Dynamic values based on selected timeframe
+    const metricsMap = {
+      Today: {
+        revenue: "₹45,230",
+        revenueCompare: "↑ 12% vs yesterday",
+        disputes: "₹1,200",
+        disputesCompare: "1 active dispute pending response",
+        returnRate: "14.2%",
+        returnCompare: "↓ 1.1% after RTO Shield",
+        points: "0,120 100,110 200,80 300,90 400,50 480,20",
+        circles: [{x: 0, y: 120}, {x: 100, y: 110}, {x: 200, y: 80}, {x: 300, y: 90}, {x: 400, y: 50}, {x: 480, y: 20}]
+      },
+      Weekly: {
+        revenue: "₹2,84,500",
+        revenueCompare: "↑ 18% vs last week",
+        disputes: "₹14,500",
+        disputesCompare: "3 active disputes pending response",
+        returnRate: "12.8%",
+        returnCompare: "↓ 2.4% after RTO Shield",
+        points: "0,90 80,100 160,70 240,60 320,40 400,30 480,10",
+        circles: [{x: 0, y: 90}, {x: 80, y: 100}, {x: 160, y: 70}, {x: 240, y: 60}, {x: 320, y: 40}, {x: 400, y: 30}, {x: 480, y: 10}]
+      },
+      Monthly: {
+        revenue: "₹12,45,230",
+        revenueCompare: "↑ 22% vs last month",
+        disputes: "₹48,900",
+        disputesCompare: "8 active disputes pending response",
+        returnRate: "11.5%",
+        returnCompare: "↓ 3.2% after RTO Shield",
+        points: "0,140 80,120 160,110 240,80 320,60 400,40 480,15",
+        circles: [{x: 0, y: 140}, {x: 80, y: 120}, {x: 160, y: 110}, {x: 240, y: 80}, {x: 320, y: 60}, {x: 400, y: 40}, {x: 480, y: 15}]
+      },
+      YTD: {
+        revenue: "₹1,18,45,230",
+        revenueCompare: "↑ 35% year-on-year",
+        disputes: "₹3,12,000",
+        disputesCompare: "14 disputes resolved in favor",
+        returnRate: "10.8%",
+        returnCompare: "↓ 4.5% after RTO Shield",
+        points: "0,100 80,95 160,85 240,70 320,55 400,35 480,5",
+        circles: [{x: 0, y: 100}, {x: 80, y: 95}, {x: 160, y: 85}, {x: 240, y: 70}, {x: 320, y: 55}, {x: 400, y: 35}, {x: 480, y: 5}]
+      }
+    };
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
-        <div className="glass-panel" style={{ padding: "16px", borderRadius: "8px" }}>
-          <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>GROSS REVENUE (MTD)</div>
-          <div style={{ fontSize: "24px", color: "var(--text-pri)", fontWeight: 600, margin: "8px 0" }}>₹1,45,230</div>
-          <div style={{ fontSize: "10px", color: "var(--accent)" }}>↑ 18% vs last month</div>
+    const activeMetrics = metricsMap[analyticsTimeframe];
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Realtime Store Analytics</h2>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {(["Today", "Weekly", "Monthly", "YTD"] as const).map(tf => (
+              <button
+                key={tf}
+                onClick={() => setAnalyticsTimeframe(tf)}
+                style={{
+                  padding: "5px 12px",
+                  fontSize: "11px",
+                  borderRadius: "20px",
+                  border: "1px solid var(--border)",
+                  background: analyticsTimeframe === tf ? "var(--accent-pale)" : "transparent",
+                  color: analyticsTimeframe === tf ? "var(--accent)" : "var(--text-sec)",
+                  cursor: "pointer",
+                  fontWeight: analyticsTimeframe === tf ? 600 : 400
+                }}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="glass-panel" style={{ padding: "16px", borderRadius: "8px" }}>
-          <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>RECONCILIATION DISPUTES FILED</div>
-          <div style={{ fontSize: "24px", color: "var(--text-pri)", fontWeight: 600, margin: "8px 0" }}>₹14,500</div>
-          <div style={{ fontSize: "10px", color: "var(--amber)" }}>3 active disputes pending response</div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+          <div className="glass-panel" style={{ padding: "16px", borderRadius: "8px" }}>
+            <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>GROSS REVENUE</div>
+            <div style={{ fontSize: "24px", color: "var(--text-pri)", fontWeight: 600, margin: "8px 0" }}>{activeMetrics.revenue}</div>
+            <div style={{ fontSize: "10px", color: "var(--accent)" }}>{activeMetrics.revenueCompare}</div>
+          </div>
+          <div className="glass-panel" style={{ padding: "16px", borderRadius: "8px" }}>
+            <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>RECONCILIATION DISPUTES FILED</div>
+            <div style={{ fontSize: "24px", color: "var(--text-pri)", fontWeight: 600, margin: "8px 0" }}>{activeMetrics.disputes}</div>
+            <div style={{ fontSize: "10px", color: "var(--amber)" }}>{activeMetrics.disputesCompare}</div>
+          </div>
+          <div className="glass-panel" style={{ padding: "16px", borderRadius: "8px" }}>
+            <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>AVERAGE RETURN RATE</div>
+            <div style={{ fontSize: "24px", color: "var(--red)", fontWeight: 600, margin: "8px 0" }}>{activeMetrics.returnRate}</div>
+            <div style={{ fontSize: "10px", color: "var(--accent)" }}>{activeMetrics.returnCompare}</div>
+          </div>
         </div>
-        <div className="glass-panel" style={{ padding: "16px", borderRadius: "8px" }}>
-          <div style={{ fontSize: "10px", color: "var(--text-mut)" }}>AVERAGE RETURN RATE</div>
-          <div style={{ fontSize: "24px", color: "var(--red)", fontWeight: 600, margin: "8px 0" }}>14.2%</div>
-          <div style={{ fontSize: "10px", color: "var(--accent)" }}>↓ 2.4% after RTO Shield</div>
+
+        <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px" }}>
+          <div style={{ fontSize: "12px", color: "var(--text-pri)", marginBottom: "15px" }}>
+            {analyticsTimeframe === "Today" ? "Settlements & Revenue Hourly (₹)" : "Weekly Settlements & Revenue (₹)"}
+          </div>
+          <svg viewBox="0 0 500 150" style={{ width: "100%", height: "150px" }}>
+            <polyline
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="3"
+              points={activeMetrics.points}
+            />
+            {activeMetrics.circles.map((c, i) => (
+              <circle key={i} cx={c.x} cy={c.y} r="4" fill="var(--accent)" />
+            ))}
+          </svg>
         </div>
       </div>
+    );
+  };
 
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px" }}>
-        <div style={{ fontSize: "12px", color: "var(--text-pri)", marginBottom: "15px" }}>Weekly Settlements & Revenue (₹)</div>
-        <svg viewBox="0 0 500 150" style={{ width: "100%", height: "150px" }}>
-          <polyline
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="3"
-            points="0,120 80,110 160,80 240,90 320,50 400,60 480,20"
-          />
-          <circle cx="0" cy="120" r="4" fill="var(--accent)" />
-          <circle cx="80" cy="110" r="4" fill="var(--accent)" />
-          <circle cx="160" cy="80" r="4" fill="var(--accent)" />
-          <circle cx="240" cy="90" r="4" fill="var(--accent)" />
-          <circle cx="320" cy="50" r="4" fill="var(--accent)" />
-          <circle cx="400" cy="60" r="4" fill="var(--accent)" />
-          <circle cx="480" cy="20" r="4" fill="var(--accent)" />
-        </svg>
-      </div>
-    </div>
-  );
 
-  const renderDiscounts = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Smart Pricing & Promotions</h2>
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px" }}>
-        <h3 style={{ fontSize: "14px", color: "var(--text-pri)", marginBottom: "8px" }}>Auto COD-to-Prepaid Conversion Discount</h3>
-        <p style={{ fontSize: "12px", color: "var(--text-sec)", marginBottom: "16px" }}>Reduce returns by offering a small discount (e.g. ₹50) if the customer switches to prepaid on WhatsApp checkout.</p>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "12px" }}>Status: </span>
-          <span style={{ padding: "4px 8px", background: "var(--accent-pale)", color: "var(--accent)", fontSize: "11px", fontWeight: 600, borderRadius: "4px" }}>ACTIVE</span>
+  const renderDiscounts = () => {
+    // Find active COD/RTO risk orders
+    const codOrders = orders.filter(o => o.status === "RTO risk" || o.status === "Unfulfilled");
+    const selectedOrder = orders.find(o => o.id === selectedCodOrderId) || codOrders[0] || orders[0];
+
+    const calculateDiscount = () => {
+      const numericAmount = Number(selectedOrder.amount.replace(/[^0-9]/g, ""));
+      if (discountType === "flat") {
+        return discountValue;
+      } else {
+        return Math.round((numericAmount * discountValue) / 100);
+      }
+    };
+
+    const handleSendSimulatedOffer = () => {
+      setWhatsappSimStep(1);
+    };
+
+    const handleSimulateAccept = () => {
+      setWhatsappSimStep(2);
+      // Update order status in frontend state
+      setOrders(prev => prev.map(o => {
+        if (o.id === selectedCodOrderId) {
+          return {
+            ...o,
+            status: "Processing",
+            rtoRisk: "Low",
+            amount: `₹${(Number(o.amount.replace(/[^0-9]/g, "")) - calculateDiscount()).toLocaleString("en-IN")}`
+          };
+        }
+        return o;
+      }));
+    };
+
+    const handleSimulateDecline = () => {
+      setWhatsappSimStep(3);
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Smart Pricing & Promotions</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "12px", color: "var(--text-sec)" }}>Rule Engine Status:</span>
+            <button
+              onClick={() => setDiscountActive(!discountActive)}
+              style={{
+                padding: "6px 12px",
+                fontSize: "11px",
+                borderRadius: "6px",
+                border: "none",
+                background: discountActive ? "var(--accent-pale)" : "rgba(239, 68, 68, 0.15)",
+                color: discountActive ? "var(--accent)" : "var(--red)",
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
+            >
+              {discountActive ? "● ACTIVE" : "○ INACTIVE"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "20px" }}>
+          {/* Settings Panel */}
+          <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h3 style={{ fontSize: "14px", color: "var(--text-pri)", fontWeight: 600 }}>Auto COD-to-Prepaid Conversion</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-sec)" }}>
+              Automatically ping buyers of high-risk COD orders on WhatsApp, offering an instant discount to switch to prepaid, thereby lowering RTO rate.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "11px", color: "var(--text-mut)" }}>DISCOUNT TYPE</label>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={() => setDiscountType("flat")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      fontSize: "12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: discountType === "flat" ? "rgba(255, 255, 255, 0.05)" : "transparent",
+                      color: discountType === "flat" ? "var(--accent)" : "var(--text-sec)",
+                      fontWeight: discountType === "flat" ? 600 : 400,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Flat Discount (₹)
+                  </button>
+                  <button
+                    onClick={() => setDiscountType("percent")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      fontSize: "12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: discountType === "percent" ? "rgba(255, 255, 255, 0.05)" : "transparent",
+                      color: discountType === "percent" ? "var(--accent)" : "var(--text-sec)",
+                      fontWeight: discountType === "percent" ? 600 : 400,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Percentage (%)
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label style={{ fontSize: "11px", color: "var(--text-mut)" }}>DISCOUNT VALUE</label>
+                  <input
+                    type="number"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(Number(e.target.value))}
+                    style={{
+                      backgroundColor: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      color: "var(--text-pri)",
+                      padding: "8px",
+                      fontSize: "12px",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label style={{ fontSize: "11px", color: "var(--text-mut)" }}>MIN ORDER VALUE (₹)</label>
+                  <input
+                    type="number"
+                    value={minOrderValue}
+                    onChange={(e) => setMinOrderValue(Number(e.target.value))}
+                    style={{
+                      backgroundColor: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      color: "var(--text-pri)",
+                      padding: "8px",
+                      fontSize: "12px",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Simulation Playground */}
+          <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "14px", color: "var(--text-pri)", fontWeight: 600 }}>WhatsApp simulator playground</h3>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "11px", color: "var(--text-mut)" }}>SELECT RISK ORDER TO TEST OFFER</label>
+              <select
+                value={selectedCodOrderId}
+                onChange={(e) => {
+                  setSelectedCodOrderId(e.target.value);
+                  setWhatsappSimStep(0);
+                }}
+                style={{
+                  backgroundColor: "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--text-pri)",
+                  padding: "8px",
+                  fontSize: "12px",
+                  outline: "none"
+                }}
+              >
+                {orders.map(o => (
+                  <option key={o.id} value={o.id}>
+                    {o.id} - {o.product} ({o.amount}) - {o.status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{
+              background: "rgba(0,0,0,0.3)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              padding: "12px",
+              minHeight: "150px",
+              fontSize: "11.5px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px"
+            }}>
+              {whatsappSimStep === 0 && (
+                <div style={{ color: "var(--text-mut)", textAlign: "center", margin: "auto" }}>
+                  Click below to generate and send WhatsApp offer message.
+                </div>
+              )}
+
+              {whatsappSimStep >= 1 && (
+                <>
+                  <div style={{ alignSelf: "flex-start", background: "var(--card)", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", maxWidth: "85%" }}>
+                    📩 *Vyapar OS Auto Offer*:<br />
+                    Namaste! Aapka order *{selectedOrder?.id}* for *{selectedOrder?.product}* receive ho gaya hai. <br />
+                    Agarr aap ise *Prepaid* me convert karte hain, toh aapko instantly *₹{calculateDiscount()} discount* milega! <br />
+                    Total Pay: *₹{(Number(selectedOrder?.amount.replace(/[^0-9]/g, "")) - calculateDiscount())}* only.<br /><br />
+                    Pay via UPI: [razorpay.com/pay](https://razorpay.com/payment/simulated-vyapar)
+                  </div>
+                </>
+              )}
+
+              {whatsappSimStep === 2 && (
+                <div style={{ alignSelf: "flex-end", background: "var(--accent-pale)", border: "1px solid var(--accent)", padding: "6px 10px", borderRadius: "8px", maxWidth: "80%", color: "var(--text-pri)" }}>
+                  ✅ Switch to prepaid option selected. Payment successful. Thank you!
+                </div>
+              )}
+
+              {whatsappSimStep === 3 && (
+                <div style={{ alignSelf: "flex-end", background: "rgba(239, 68, 68, 0.1)", border: "1px solid var(--red)", padding: "6px 10px", borderRadius: "8px", maxWidth: "80%", color: "var(--text-pri)" }}>
+                  ❌ Keep as COD.
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              {whatsappSimStep === 0 ? (
+                <button
+                  onClick={handleSendSimulatedOffer}
+                  style={{ width: "100%", padding: "8px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "6px", fontWeight: 600, fontSize: "12px", cursor: "pointer" }}
+                >
+                  ⚡ Send Simulated WhatsApp Offer
+                </button>
+              ) : whatsappSimStep === 1 ? (
+                <>
+                  <button
+                    onClick={handleSimulateAccept}
+                    style={{ flex: 1, padding: "8px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "6px", fontWeight: 600, fontSize: "11.5px", cursor: "pointer" }}
+                  >
+                    Accept Offer (Simulate Buyer)
+                  </button>
+                  <button
+                    onClick={handleSimulateDecline}
+                    style={{ flex: 1, padding: "8px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-sec)", borderRadius: "6px", fontSize: "11.5px", cursor: "pointer" }}
+                  >
+                    Keep COD (Simulate Buyer)
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setWhatsappSimStep(0)}
+                  style={{ width: "100%", padding: "8px", background: "rgba(255, 255, 255, 0.05)", color: "var(--text-pri)", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}
+                >
+                  Reset Simulation
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
+
 
   const renderEmails = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -808,38 +1315,451 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 
-  const renderABTesting = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>A/B Variant Testing</h2>
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px" }}>
-        <p style={{ fontSize: "12px", color: "var(--text-sec)" }}>Upgrade to **Grow Plan** to distribute storefront checkout options and optimize shipping configurations.</p>
-      </div>
-    </div>
-  );
-
-  const renderIntegrations = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Marketplace API Integrations</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "16px" }}>
-        {[
-          { name: "Amazon Selling Partner API", status: "Connected", logo: "🛍️", color: "var(--amz)" },
-          { name: "Flipkart Seller API", status: "Connected", logo: "🛒", color: "var(--flipkart)" },
-          { name: "Meesho Seller Panel Sync", status: "Connected", logo: "📦", color: "var(--meesho)" },
-          { name: "CA Bookkeeping CSV Bridge", status: "Active", logo: "📁", color: "var(--accent)" }
-        ].map(api => (
-          <div key={api.name} className="glass-panel" style={{ padding: "16px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-pri)", display: "flex", alignItems: "center", gap: "8px" }}>
-                <span>{api.logo}</span> {api.name}
-              </div>
-              <div style={{ fontSize: "11px", marginTop: "4px", color: api.color }}>{api.status}</div>
-            </div>
-            <button style={{ padding: "4px 8px", fontSize: "10px", border: "1px solid var(--border)", color: "var(--text-pri)", background: "transparent", borderRadius: "4px", cursor: "pointer" }}>Configure</button>
+  const renderABTesting = () => {
+    if (!isSubscribed) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>A/B Variant Testing</h2>
+          <div className="glass-panel" style={{ padding: "40px", borderRadius: "10px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
+            <span style={{ fontSize: "40px" }}>🧪</span>
+            <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-pri)" }}>Unlock conversion optimization</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-sec)", maxWidth: "340px", lineHeight: "1.6" }}>
+              Run live experiments on checkout options, WhatsApp templates, and shipping thresholds to optimize conversion rates and minimize returns.
+            </p>
+            <button
+              onClick={() => setIsUpgrading(true)}
+              style={{
+                padding: "8px 20px",
+                background: "var(--accent)",
+                color: "var(--accent-text)",
+                border: "none",
+                borderRadius: "6px",
+                fontWeight: 600,
+                fontSize: "12px",
+                cursor: "pointer",
+                marginTop: "8px"
+              }}
+            >
+              Upgrade to Pro Plan
+            </button>
           </div>
-        ))}
+        </div>
+      );
+    }
+
+    const handleCreateTest = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newTestName) return;
+
+      const newTest = {
+        id: `ab-00${abTests.length + 1}`,
+        name: newTestName,
+        variantA: newTestVarA || "Variant A",
+        variantB: newTestVarB || "Variant B",
+        trafficSplit: newTestSplit,
+        status: "Running",
+        conversionsA: 0,
+        conversionsB: 0,
+        ordersA: 0,
+        ordersB: 0,
+        rtoA: 0,
+        rtoB: 0
+      };
+
+      setAbTests([...abTests, newTest]);
+      setNewTestName("");
+      setNewTestVarA("");
+      setNewTestVarB("");
+      setNewTestSplit(50);
+      setNewTestModalOpen(false);
+    };
+
+    const toggleStatus = (id: string) => {
+      setAbTests(prev => prev.map(t => {
+        if (t.id === id) {
+          return { ...t, status: t.status === "Running" ? "Paused" : "Running" };
+        }
+        return t;
+      }));
+    };
+
+    const declareWinner = (id: string, winner: "A" | "B") => {
+      const test = abTests.find(t => t.id === id);
+      const winnerName = winner === "A" ? test.variantA : test.variantB;
+      alert(`Declared "${winnerName}" as the winner for the test "${test.name}"! Applying settings store-wide.`);
+      setAbTests(prev => prev.filter(t => t.id !== id));
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>A/B Variant Testing</h2>
+            <p style={{ fontSize: "11px", color: "var(--text-sec)" }}>Distribute storefront checkouts and optimize shipping templates.</p>
+          </div>
+          <button
+            onClick={() => setNewTestModalOpen(true)}
+            style={{
+              padding: "8px 16px",
+              background: "var(--accent)",
+              color: "var(--accent-text)",
+              border: "none",
+              borderRadius: "6px",
+              fontWeight: 600,
+              fontSize: "12px",
+              cursor: "pointer"
+            }}
+          >
+            🧪 Start New Experiment
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {abTests.map(test => {
+            const totalOrders = test.ordersA + test.ordersB;
+            const rateA = test.ordersA ? ((test.conversionsA / test.ordersA) * 100).toFixed(1) : "0.0";
+            const rateB = test.ordersB ? ((test.conversionsB / test.ordersB) * 100).toFixed(1) : "0.0";
+
+            return (
+              <div key={test.id} className="glass-panel" style={{ padding: "20px", borderRadius: "10px", display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-pri)" }}>{test.name}</h3>
+                    <div style={{ display: "flex", gap: "8px", marginTop: "4px", alignItems: "center" }}>
+                      <span style={{
+                        fontSize: "9px",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: test.status === "Running" ? "var(--accent-pale)" : "rgba(255,255,255,0.05)",
+                        color: test.status === "Running" ? "var(--accent)" : "var(--text-sec)"
+                      }}>
+                        {test.status}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "var(--text-mut)" }}>Split: {test.trafficSplit}% / {100 - test.trafficSplit}% • Total Visitors: {totalOrders}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={() => toggleStatus(test.id)}
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "11px",
+                        border: "1px solid var(--border)",
+                        background: "transparent",
+                        color: "var(--text-pri)",
+                        borderRadius: "4px",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {test.status === "Running" ? "Pause" : "Resume"}
+                    </button>
+                    <button
+                      onClick={() => declareWinner(test.id, "A")}
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "11px",
+                        border: "1px solid var(--accent)",
+                        background: "var(--accent-pale)",
+                        color: "var(--accent)",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontWeight: 600
+                      }}
+                    >
+                      Winner: A
+                    </button>
+                    <button
+                      onClick={() => declareWinner(test.id, "B")}
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "11px",
+                        border: "1px solid var(--accent)",
+                        background: "var(--accent-pale)",
+                        color: "var(--accent)",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontWeight: 600
+                      }}
+                    >
+                      Winner: B
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
+                  {/* Variant A details */}
+                  <div style={{ padding: "10px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
+                    <div style={{ fontSize: "11px", color: "var(--text-mut)" }}>VARIANT A</div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-pri)", margin: "4px 0" }}>{test.variantA}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginTop: "8px" }}>
+                      <div>
+                        <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>TRAFFIC</div>
+                        <div style={{ fontSize: "11px", color: "var(--text-pri)" }}>{test.ordersA} visitors</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>CONV. RATE</div>
+                        <div style={{ fontSize: "11px", color: "var(--accent)", fontWeight: 600 }}>{rateA}%</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>RTO RATE</div>
+                        <div style={{ fontSize: "11px", color: "var(--red)" }}>{test.rtoA}%</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Variant B details */}
+                  <div style={{ padding: "10px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
+                    <div style={{ fontSize: "11px", color: "var(--text-mut)" }}>VARIANT B</div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-pri)", margin: "4px 0" }}>{test.variantB}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginTop: "8px" }}>
+                      <div>
+                        <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>TRAFFIC</div>
+                        <div style={{ fontSize: "11px", color: "var(--text-pri)" }}>{test.ordersB} visitors</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>CONV. RATE</div>
+                        <div style={{ fontSize: "11px", color: "var(--accent)", fontWeight: 600 }}>{rateB}%</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>RTO RATE</div>
+                        <div style={{ fontSize: "11px", color: "var(--red)" }}>{test.rtoB}%</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Modal for creating a new experiment */}
+        {newTestModalOpen && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.85)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+            <form onSubmit={handleCreateTest} className="glass-panel" style={{ padding: "24px", borderRadius: "12px", width: "420px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-pri)" }}>🧪 Create New Experiment</h3>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>EXPERIMENT NAME</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. UPI checkout incentive banner"
+                  value={newTestName}
+                  onChange={(e) => setNewTestName(e.target.value)}
+                  style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-pri)", padding: "8px", fontSize: "12px", outline: "none" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>VARIANT A</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Control (No discount)"
+                    value={newTestVarA}
+                    onChange={(e) => setNewTestVarA(e.target.value)}
+                    style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-pri)", padding: "8px", fontSize: "12px", outline: "none" }}
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>VARIANT B</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Treatment (₹50 discount)"
+                    value={newTestVarB}
+                    onChange={(e) => setNewTestVarB(e.target.value)}
+                    style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-pri)", padding: "8px", fontSize: "12px", outline: "none" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>TRAFFIC SPLIT (VARIANT A)</label>
+                  <span style={{ fontSize: "11px", color: "var(--accent)" }}>{newTestSplit}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="90"
+                  value={newTestSplit}
+                  onChange={(e) => setNewTestSplit(Number(e.target.value))}
+                  style={{ width: "100%", accentColor: "var(--accent)", cursor: "pointer" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setNewTestModalOpen(false)}
+                  style={{ flex: 1, padding: "8px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-sec)", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ flex: 1, padding: "8px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer", fontSize: "12px" }}
+                >
+                  Start Experiment
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
+
+
+  const renderIntegrations = () => {
+    const handleConfigure = (api: any) => {
+      setActiveConfigIntegration(api);
+      setSellerId(api.name.includes("CA Bookkeeping") ? "CA-BOOK-2026" : "MSME-SHARMA-001");
+      setApiKey("••••••••••••••••••••••••");
+      setSyncInterval("30");
+      setIntegrationModalOpen(true);
+    };
+
+    const handleSaveIntegration = (e: React.FormEvent) => {
+      e.preventDefault();
+      alert(`Configuration for ${activeConfigIntegration?.name} saved successfully! Synchronizing catalog data...`);
+      setIntegrationModalOpen(false);
+    };
+
+    const handleTestConnection = () => {
+      alert(`Testing authorization tokens for ${activeConfigIntegration?.name}...\n✅ API handshake verified. Ping response latency: 142ms.`);
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Marketplace API Integrations</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "16px" }}>
+          {[
+            { name: "Amazon Selling Partner API", status: "Connected", logo: "🛍️", color: "var(--amz)" },
+            { name: "Flipkart Seller API", status: "Connected", logo: "🛒", color: "var(--flipkart)" },
+            { name: "Meesho Seller Panel Sync", status: "Connected", logo: "📦", color: "var(--meesho)" },
+            { name: "CA Bookkeeping CSV Bridge", status: "Active", logo: "📁", color: "var(--accent)" }
+          ].map(api => (
+            <div key={api.name} className="glass-panel" style={{ padding: "16px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-pri)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>{api.logo}</span> {api.name}
+                </div>
+                <div style={{ fontSize: "11px", marginTop: "4px", color: api.color }}>{api.status}</div>
+              </div>
+              <button
+                onClick={() => handleConfigure(api)}
+                style={{ padding: "4px 8px", fontSize: "10px", border: "1px solid var(--border)", color: "var(--text-pri)", background: "transparent", borderRadius: "4px", cursor: "pointer" }}
+              >
+                Configure
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Integration Config Modal */}
+        {integrationModalOpen && activeConfigIntegration && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.85)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+            <form onSubmit={handleSaveIntegration} className="glass-panel" style={{ padding: "24px", borderRadius: "12px", width: "420px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-pri)" }}>🔌 Configure {activeConfigIntegration.name}</h3>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>
+                  {activeConfigIntegration.name.includes("Bookkeeping") ? "FIRM/CLIENT CODE" : "SELLER / MERCHANT ID"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={sellerId}
+                  onChange={(e) => setSellerId(e.target.value)}
+                  style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-pri)", padding: "8px", fontSize: "12px", outline: "none" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>
+                  {activeConfigIntegration.name.includes("Bookkeeping") ? "CA EMAIL / BACKUP KEY" : "API AUTHENTICATION TOKEN"}
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-pri)", padding: "8px", fontSize: "12px", outline: "none" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "11px", color: "var(--text-sec)" }}>DATA SYNC INTERVAL</label>
+                <select
+                  value={syncInterval}
+                  onChange={(e) => setSyncInterval(e.target.value)}
+                  style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-pri)", padding: "8px", fontSize: "12px", outline: "none", cursor: "pointer" }}
+                >
+                  <option value="15">Every 15 Minutes</option>
+                  <option value="30">Every 30 Minutes</option>
+                  <option value="60">Hourly</option>
+                  <option value="1440">Daily</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  style={{ flex: 1, padding: "8px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-pri)", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}
+                >
+                  Test Connection
+                </button>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setIntegrationModalOpen(false)}
+                  style={{ flex: 1, padding: "8px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-sec)", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ flex: 1, padding: "8px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer", fontSize: "12px" }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    );
+  };
+
 
   const renderSettings = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -875,25 +1795,276 @@ export const Dashboard: React.FC = () => {
         )}
       </div>
 
+      {/* Role Config Panel */}
+      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-pri)" }}>Role-based Access Control (RBAC)</div>
+        <p style={{ fontSize: "11px", color: "var(--text-sec)" }}>Switch user role to test approval queue flows and permission locks.</p>
+        <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+          <button
+            onClick={() => setUserRole("Owner")}
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: userRole === "Owner" ? "var(--accent-pale)" : "transparent",
+              color: userRole === "Owner" ? "var(--accent)" : "var(--text-sec)",
+              fontWeight: userRole === "Owner" ? 600 : 400,
+              cursor: "pointer"
+            }}
+          >
+            👑 Owner Role
+          </button>
+          <button
+            onClick={() => setUserRole("Accountant")}
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: userRole === "Accountant" ? "var(--accent-pale)" : "transparent",
+              color: userRole === "Accountant" ? "var(--accent)" : "var(--text-sec)",
+              fontWeight: userRole === "Accountant" ? 600 : 400,
+              cursor: "pointer"
+            }}
+          >
+            📊 Accountant Role
+          </button>
+        </div>
+      </div>
+
       <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px" }}>
         <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Store Currency: **INR (₹)**</div>
         <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Primary Language: **Hindi / English Bilingual**</div>
-        <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Connected Mobile: **+91 98765 43210**</div>
+        <div style={{ fontSize: "12px", color: "var(--text-pri)" }}>Connected Mobile: **+91 89717 72472**</div>
       </div>
     </div>
   );
 
-  const renderSupport = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Support Center</h2>
-      <div className="glass-panel" style={{ padding: "20px", borderRadius: "8px" }}>
-        <p style={{ fontSize: "12px", color: "var(--text-sec)" }}>Facing any issue with API connection or settlements? Chat with us instantly.</p>
-        <button style={{ marginTop: "12px", padding: "8px 16px", background: "var(--accent)", color: "var(--accent-text)", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}>
-          💬 Start Live Support Chat
-        </button>
+  const renderSupport = () => {
+    const handleSendSupportMessage = () => {
+      if (!supportInput.trim()) return;
+
+      const userMsg = { from: "user", text: supportInput, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+      setSupportMessages(prev => [...prev, userMsg]);
+      const currentInput = supportInput;
+      setSupportInput("");
+      setIsSupportTyping(true);
+
+      fetch(getApiUrl("/api/support/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: currentInput })
+      })
+        .then(res => res.json())
+        .then(data => {
+          setIsSupportTyping(false);
+          const agentMsg = {
+            from: "agent",
+            text: data.reply || "Aapke inquiry ke liye shukriya. Main ispe check kar raha hoon.",
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setSupportMessages(prev => [...prev, agentMsg]);
+        })
+        .catch(err => {
+          setIsSupportTyping(false);
+          console.error("Support API error:", err);
+          const errorMsg = {
+            from: "agent",
+            text: "Connection error. Please try again or check your local server settings.",
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setSupportMessages(prev => [...prev, errorMsg]);
+        });
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px", height: "calc(100vh - 120px)" }}>
+        <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>Support Center</h2>
+        
+        <div className="glass-panel" style={{
+          display: "flex",
+          flexDirection: "column",
+          borderRadius: "10px",
+          flex: 1,
+          overflow: "hidden"
+        }}>
+          {/* Support Chat Messages Log */}
+          <div style={{
+            flex: 1,
+            padding: "20px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px"
+          }}>
+            {supportMessages.map((msg, idx) => {
+              const isAgent = msg.from === "agent";
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    alignSelf: isAgent ? "flex-start" : "flex-end",
+                    maxWidth: "75%",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px"
+                  }}
+                >
+                  <div style={{
+                    fontSize: "9px",
+                    color: "var(--text-mut)",
+                    alignSelf: isAgent ? "flex-start" : "flex-end"
+                  }}>
+                    {isAgent ? "Support Agent" : "You"} • {msg.time}
+                  </div>
+                  <div style={{
+                    background: isAgent ? "var(--card)" : "var(--accent-pale)",
+                    color: "var(--text-pri)",
+                    border: isAgent ? "1px solid var(--border)" : "1px solid var(--accent)",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    borderTopLeftRadius: isAgent ? "2px" : "10px",
+                    borderTopRightRadius: isAgent ? "10px" : "2px",
+                    fontSize: "12.5px",
+                    lineHeight: "1.5",
+                    whiteSpace: "pre-line"
+                  }}>
+                    {msg.text}
+                  </div>
+                </div>
+              );
+            })}
+
+            {isSupportTyping && (
+              <div style={{ alignSelf: "flex-start", display: "flex", flexDirection: "column", gap: "2px" }}>
+                <span style={{ fontSize: "9px", color: "var(--text-mut)" }}>Support Agent is typing...</span>
+                <div style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  fontSize: "11px",
+                  color: "var(--text-sec)",
+                  fontStyle: "italic"
+                }}>
+                  Analyzing issue...
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Support Input Bar */}
+          <div style={{
+            padding: "16px",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            gap: "10px",
+            backgroundColor: "rgba(0,0,0,0.15)"
+          }}>
+            <input
+              type="text"
+              value={supportInput}
+              onChange={(e) => setSupportInput(e.target.value)}
+              placeholder="Ask support about settlements, integrations, or subscription..."
+              style={{
+                flex: 1,
+                backgroundColor: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                color: "var(--text-pri)",
+                padding: "10px 14px",
+                fontSize: "12px",
+                outline: "none"
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSendSupportMessage();
+              }}
+            />
+            <button
+              onClick={handleSendSupportMessage}
+              style={{
+                background: "var(--accent)",
+                color: "var(--accent-text)",
+                border: "none",
+                borderRadius: "6px",
+                padding: "0 20px",
+                fontWeight: 600,
+                fontSize: "12px",
+                cursor: "pointer"
+              }}
+            >
+              Send Message
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderObservability = () => {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-pri)" }}>System Status & Observability Hub</h2>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "20px" }}>
+          {/* Release Readiness Checklist */}
+          <div className="glass-panel" style={{ padding: "20px", borderRadius: "10px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-pri)" }}>🚀 Deployment Readiness Checklist</h3>
+            <p style={{ fontSize: "11px", color: "var(--text-sec)" }}>Check the readiness state of Vyapar OS background sync nodes and webhooks.</p>
+            
+            {deployStatus ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border)", paddingBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-mut)" }}>ENVIRONMENT</span>
+                  <span style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 600 }}>{deployStatus.environment.toUpperCase()}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border)", paddingBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-mut)" }}>STATUS</span>
+                  <span style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 600 }}>READY</span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
+                  {deployStatus.steps?.map((step: string, idx: number) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px" }}>
+                      <span style={{ color: "var(--accent)" }}>✓</span>
+                      <span style={{ color: "var(--text-pri)" }}>{step}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: "11px", color: "var(--text-mut)" }}>Loading deployment status...</div>
+            )}
+          </div>
+
+          {/* System Timeline Logs */}
+          <div className="glass-panel" style={{ padding: "20px", borderRadius: "10px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-pri)" }}>🛠️ Background Event Heartbeats</h3>
+            <p style={{ fontSize: "11px", color: "var(--text-sec)" }}>Heartbeats and webhook sync reports collected from platform endpoints.</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "300px", overflowY: "auto" }}>
+              {systemEvents.length === 0 ? (
+                <div style={{ fontSize: "11px", color: "var(--text-mut)" }}>No events recorded.</div>
+              ) : (
+                systemEvents.map((evt: any, idx: number) => (
+                  <div key={idx} style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid var(--accent)", paddingLeft: "10px", marginLeft: "4px" }}>
+                    <div style={{ fontSize: "9px", color: "var(--text-mut)" }}>
+                      {new Date(evt.ts).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: "11.5px", color: "var(--text-pri)" }}>
+                      <strong>[{evt.type.toUpperCase()}]</strong> {evt.detail}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   const getContent = () => {
     switch (activeSection) {
@@ -908,9 +2079,14 @@ export const Dashboard: React.FC = () => {
       case "Integrations": return renderIntegrations();
       case "Settings": return renderSettings();
       case "Support": return renderSupport();
+      case "Status": return renderObservability();
       default: return renderHome();
     }
   };
+
+  if (!isUnlocked) {
+    return <LockScreen onUnlock={(token) => { setIsUnlocked(true); localStorage.setItem("vyapar_session", token); }} />;
+  }
 
   return (
     <div
@@ -921,7 +2097,7 @@ export const Dashboard: React.FC = () => {
         overflow: "hidden",
       }}
     >
-      <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
+      <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} onLogout={handleLogout} />
 
       <div
         style={{

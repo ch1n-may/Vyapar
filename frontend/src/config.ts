@@ -6,3 +6,12 @@ export const getApiUrl = (path: string): string => {
   }
   return path;
 };
+
+export const getWsUrl = (): string => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'ws://localhost:3001';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;
+};
+
